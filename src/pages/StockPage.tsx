@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
-import { Plus, Download, Edit2, Trash2, Package, ChevronUp, ChevronDown, Barcode } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Plus, Download, Edit2, Trash2, Package, ChevronUp, ChevronDown, Barcode, Upload, FileSpreadsheet, AlertTriangle, CheckCircle } from 'lucide-react';
 import ReactBarcode from 'react-barcode';
 import { useWineStore } from '../store/wineStore';
-import { Wine, WineCategory, CATEGORY_LABELS } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
+import { Wine } from '../types';
 import { formatCurrency } from '../utils/format';
-import { exportStockToExcel } from '../utils/excel';
+import { exportStockToExcel, downloadWineTemplate, importWinesFromExcel, ImportedWine } from '../utils/excel';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -15,7 +16,7 @@ type SortField = 'name' | 'category' | 'stock' | 'price';
 type SortDir = 'asc' | 'desc';
 
 const EMPTY_FORM = {
-  name: '', code: '', category: 'tinto' as WineCategory,
+  name: '', code: '', category: '',
   vintage: '', region: '', winery: '', varietal: '',
   stock: '', bottlesPerCase: '6',
   priceBottle: '', priceCase: '', priceMarket: '', notes: '',
@@ -30,7 +31,11 @@ interface WineFormProps {
 }
 
 function WineForm({ initial, onSubmit, onCancel, submitLabel }: WineFormProps) {
-  const [form, setForm] = useState<FormState>(initial);
+  const categories = useCategoryStore((s) => s.categories);
+  const [form, setForm] = useState<FormState>(() => ({
+    ...initial,
+    category: initial.category || categories[0]?.id || '',
+  }));
   const set = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
@@ -48,8 +53,8 @@ function WineForm({ initial, onSubmit, onCancel, submitLabel }: WineFormProps) {
         <div>
           <label className="label">Categoría *</label>
           <select className="input" required value={form.category} onChange={set('category')}>
-            {(Object.keys(CATEGORY_LABELS) as WineCategory[]).map((cat) => (
-              <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.label}</option>
             ))}
           </select>
         </div>
@@ -145,13 +150,16 @@ export function StockPage() {
   const updateStock = useWineStore((s) => s.updateStock);
 
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<WineCategory | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [addOpen, setAddOpen] = useState(false);
   const [editWine, setEditWine] = useState<Wine | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [barcodeWine, setBarcodeWine] = useState<Wine | null>(null);
+  const [importData, setImportData] = useState<{ valid: ImportedWine[]; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -182,7 +190,25 @@ export function StockPage() {
 
   const totalBottles = sorted.reduce((acc, w) => acc + w.stock, 0);
   const totalValue = sorted.reduce((acc, w) => acc + w.stock * w.prices.bottle, 0);
-  const categories = Object.keys(CATEGORY_LABELS) as WineCategory[];
+  const categories = useCategoryStore((s) => s.categories);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const result = await importWinesFromExcel(file);
+    setImportData(result);
+  }
+
+  async function handleConfirmImport() {
+    if (!importData) return;
+    setImporting(true);
+    for (const w of importData.valid) {
+      await addWine(w);
+    }
+    setImporting(false);
+    setImportData(null);
+  }
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ChevronUp size={12} className="text-gray-300 ml-1 inline" />;
@@ -202,7 +228,15 @@ export function StockPage() {
           <h1 className="text-2xl font-bold text-gray-900">Stock / Inventario</h1>
           <p className="text-sm text-gray-500 mt-0.5">{wines.length} vinos registrados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => downloadWineTemplate()} className="btn-ghost">
+            <FileSpreadsheet size={15} />
+            Plantilla
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} className="btn-secondary">
+            <Upload size={15} />
+            Importar Excel
+          </button>
           <button onClick={() => exportStockToExcel(wines)} className="btn-secondary">
             <Download size={15} />
             Exportar Excel
@@ -212,6 +246,7 @@ export function StockPage() {
             Agregar Vino
           </button>
         </div>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -222,9 +257,9 @@ export function StockPage() {
             Todos
           </button>
           {categories.map((cat) => (
-            <button key={cat} onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
-              {CATEGORY_LABELS[cat]}
+            <button key={cat.id} onClick={() => setCategoryFilter(cat.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${categoryFilter === cat.id ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+              {cat.label}
             </button>
           ))}
         </div>
@@ -341,6 +376,65 @@ export function StockPage() {
             <div className="flex gap-2">
               <button onClick={() => setBarcodeWine(null)} className="btn-secondary">Cerrar</button>
               <button onClick={() => window.print()} className="btn-primary">Imprimir</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!importData} onClose={() => setImportData(null)} title="Importar Vinos desde Excel" size="lg">
+        {importData && (
+          <div className="space-y-4">
+            {importData.valid.length > 0 && (
+              <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
+                <CheckCircle size={16} />
+                {importData.valid.length} vino{importData.valid.length !== 1 ? 's' : ''} listos para importar
+              </div>
+            )}
+            {importData.errors.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-amber-700 font-medium text-sm mb-2">
+                  <AlertTriangle size={15} />
+                  {importData.errors.length} fila{importData.errors.length !== 1 ? 's' : ''} con errores (se omiten)
+                </div>
+                <ul className="text-xs text-amber-700 space-y-0.5 pl-2">
+                  {importData.errors.map((e, i) => <li key={i}>• {e}</li>)}
+                </ul>
+              </div>
+            )}
+            {importData.valid.length > 0 && (
+              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="table-header text-left">Nombre</th>
+                      <th className="table-header">Código</th>
+                      <th className="table-header">Stock</th>
+                      <th className="table-header">P. Botella</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importData.valid.map((w, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="table-cell font-medium">{w.name}</td>
+                        <td className="table-cell text-center"><code className="text-xs bg-gray-100 px-1 rounded">{w.code}</code></td>
+                        <td className="table-cell text-center">{w.stock}</td>
+                        <td className="table-cell text-center">${w.prices.bottle.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {importData.valid.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No hay vinos válidos para importar.</p>
+            )}
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setImportData(null)} className="btn-secondary">Cancelar</button>
+              {importData.valid.length > 0 && (
+                <button onClick={handleConfirmImport} disabled={importing} className="btn-primary">
+                  {importing ? 'Importando...' : `Importar ${importData.valid.length} vino${importData.valid.length !== 1 ? 's' : ''}`}
+                </button>
+              )}
             </div>
           </div>
         )}

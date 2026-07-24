@@ -1,13 +1,128 @@
 import * as XLSX from 'xlsx';
-import { Wine, CATEGORY_LABELS } from '../types';
+import { Wine } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
+
+export interface ImportedWine {
+  name: string;
+  code: string;
+  category: string;
+  winery?: string;
+  varietal?: string;
+  region?: string;
+  vintage?: number;
+  stock: number;
+  bottlesPerCase: number;
+  prices: { bottle: number; case: number; market: number };
+  notes?: string;
+}
+
+export interface ImportResult {
+  valid: ImportedWine[];
+  errors: string[];
+}
+
+export function downloadWineTemplate(): void {
+  const { categories } = useCategoryStore.getState();
+
+  const template = [
+    {
+      Nombre: 'Malbec Reserva',
+      'Código de Barras': 'MAL-RES-21',
+      Categoría: categories[0]?.label ?? 'Tinto',
+      Bodega: 'Achaval Ferrer',
+      Varietal: 'Malbec',
+      Región: 'Mendoza',
+      Cosecha: 2021,
+      'Stock (botellas)': 24,
+      'Botellas por Caja': 6,
+      'Precio Botella': 3500,
+      'Precio Caja': 18000,
+      'Precio Mercado': 5200,
+      Notas: '',
+    },
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(template);
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 20 },
+    { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 },
+    { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 20 },
+  ];
+
+  const catData = categories.map((c) => ({ Categoría: c.label }));
+  const wsCat = XLSX.utils.json_to_sheet(catData);
+  wsCat['!cols'] = [{ wch: 20 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Vinos');
+  XLSX.utils.book_append_sheet(wb, wsCat, 'Categorías válidas');
+  XLSX.writeFile(wb, 'BDA_Plantilla_Vinos.xlsx');
+}
+
+export function importWinesFromExcel(file: File): Promise<ImportResult> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { categories } = useCategoryStore.getState();
+        const wb = XLSX.read(e.target!.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws);
+
+        const valid: ImportedWine[] = [];
+        const errors: string[] = [];
+
+        rows.forEach((row, i) => {
+          const rowNum = i + 2;
+          const name = String(row['Nombre'] ?? '').trim();
+          const code = String(row['Código de Barras'] ?? '').trim().toUpperCase();
+          const catLabel = String(row['Categoría'] ?? '').trim().toLowerCase();
+
+          if (!name) { errors.push(`Fila ${rowNum}: falta el Nombre`); return; }
+          if (!code) { errors.push(`Fila ${rowNum}: falta el Código de Barras`); return; }
+
+          const cat = categories.find((c) => c.label.toLowerCase() === catLabel);
+          if (!cat) {
+            errors.push(`Fila ${rowNum} (${name}): categoría "${row['Categoría']}" no reconocida`);
+            return;
+          }
+
+          valid.push({
+            name,
+            code,
+            category: cat.id,
+            winery: String(row['Bodega'] ?? '').trim() || undefined,
+            varietal: String(row['Varietal'] ?? '').trim() || undefined,
+            region: String(row['Región'] ?? '').trim() || undefined,
+            vintage: row['Cosecha'] ? Number(row['Cosecha']) : undefined,
+            stock: Number(row['Stock (botellas)']) || 0,
+            bottlesPerCase: Number(row['Botellas por Caja']) || 6,
+            prices: {
+              bottle: Number(row['Precio Botella']) || 0,
+              case: Number(row['Precio Caja']) || 0,
+              market: Number(row['Precio Mercado']) || 0,
+            },
+            notes: String(row['Notas'] ?? '').trim() || undefined,
+          });
+        });
+
+        resolve({ valid, errors });
+      } catch {
+        reject(new Error('No se pudo leer el archivo Excel'));
+      }
+    };
+    reader.readAsBinaryString(file);
+  });
+}
 import { formatCurrency } from './format';
 
 export function exportStockToExcel(wines: Wine[]): void {
+  const getLabel = useCategoryStore.getState().getLabel;
   const data = wines.map((wine, index) => ({
     '#': index + 1,
     Código: wine.code,
     Nombre: wine.name,
-    Categoría: CATEGORY_LABELS[wine.category],
+    Categoría: getLabel(wine.category),
     Varietal: wine.varietal || '-',
     Región: wine.region || '-',
     Bodega: wine.winery || '-',
@@ -50,11 +165,12 @@ export function exportStockToExcel(wines: Wine[]): void {
 }
 
 export function exportPricesToExcel(wines: Wine[]): void {
+  const getLabel = useCategoryStore.getState().getLabel;
   const data = wines.map((wine, index) => ({
     '#': index + 1,
     Código: wine.code,
     Nombre: wine.name,
-    Categoría: CATEGORY_LABELS[wine.category],
+    Categoría: getLabel(wine.category),
     'Precio Botella': wine.prices.bottle,
     'Precio Caja': wine.prices.case,
     'Precio Mercado': wine.prices.market,

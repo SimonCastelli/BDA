@@ -5,9 +5,10 @@ import { clsx } from 'clsx';
 import { useWineStore } from '../store/wineStore';
 import { useOrderStore } from '../store/orderStore';
 import { useContactStore } from '../store/contactStore';
+import { useCategoryStore } from '../store/categoryStore';
 import {
   Client, OrderItem, OrderStatus, OrderUnit, PriceType,
-  PRICE_TYPE_LABELS, PRICE_TYPE_SHORT, CATEGORY_LABELS, Contact,
+  PRICE_TYPE_LABELS, PRICE_TYPE_SHORT, Contact,
 } from '../types';
 import { formatCurrency, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
@@ -41,6 +42,7 @@ export function NewOrderPage() {
   const { wines } = useWineStore();
   const { addOrder } = useOrderStore();
   const { contacts } = useContactStore();
+  const getLabel = useCategoryStore((s) => s.getLabel);
 
   const [search, setSearch] = useState('');
   const [wineRows, setWineRows] = useState<Record<string, WineRowState>>({});
@@ -65,7 +67,7 @@ export function NewOrderPage() {
       w.code.toLowerCase().includes(q) ||
       (w.varietal ?? '').toLowerCase().includes(q) ||
       (w.winery ?? '').toLowerCase().includes(q) ||
-      CATEGORY_LABELS[w.category].toLowerCase().includes(q)
+      getLabel(w.category).toLowerCase().includes(q)
     );
   });
 
@@ -163,7 +165,7 @@ export function NewOrderPage() {
   const discountAmount = subtotal * (discount / 100);
   const total = subtotal - discountAmount;
 
-  function handleSave() {
+  async function handleSave() {
     const newErrors: typeof errors = {};
     if (!client.name.trim()) newErrors.client = 'El nombre del cliente es requerido.';
     if (items.length === 0) newErrors.items = 'Agregá al menos un producto.';
@@ -178,7 +180,7 @@ export function NewOrderPage() {
       ...(client.cuit?.trim() ? { cuit: client.cuit.trim() } : {}),
     };
 
-    const order = addOrder({
+    const order = await addOrder({
       client: cleanClient,
       items,
       subtotal,

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Package, ClipboardList, TrendingDown, DollarSign, Plus, ArrowRight, Grape, Wine } from 'lucide-react';
 import { useWineStore } from '../store/wineStore';
 import { useOrderStore } from '../store/orderStore';
-import { WineCategory, CATEGORY_LABELS } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
 import { formatCurrency, formatDate } from '../utils/format';
 import { CategoryBadge, StatusBadge } from '../components/ui/Badge';
 
@@ -16,6 +16,7 @@ const TODAY = new Date().toLocaleDateString('es-AR', {
 export function Dashboard() {
   const wines = useWineStore((s) => s.wines);
   const orders = useOrderStore((s) => s.orders);
+  const { categories } = useCategoryStore();
 
   const totalBottles = wines.reduce((acc, w) => acc + w.stock, 0);
   const criticalWines = wines.filter((w) => w.stock <= 6);
@@ -25,9 +26,9 @@ export function Dashboard() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
 
-  const categoryStock = (Object.keys(CATEGORY_LABELS) as WineCategory[]).map((cat) => ({
-    category: cat,
-    count: wines.filter((w) => w.category === cat).reduce((acc, w) => acc + w.stock, 0),
+  const categoryStock = categories.map((cat) => ({
+    category: cat.id,
+    count: wines.filter((w) => w.category === cat.id).reduce((acc, w) => acc + w.stock, 0),
   })).filter((c) => c.count > 0);
 
   const maxCategoryStock = Math.max(...categoryStock.map((c) => c.count), 1);
@@ -147,7 +148,7 @@ export function Dashboard() {
               categoryStock.map(({ category, count }) => (
                 <div key={category} className="flex items-center gap-3">
                   <div className="w-24 flex-shrink-0">
-                    <CategoryBadge category={category as WineCategory} />
+                    <CategoryBadge category={category} />
                   </div>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">

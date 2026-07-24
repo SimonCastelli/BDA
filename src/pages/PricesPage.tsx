@@ -2,7 +2,8 @@ import { useState, useRef } from 'react';
 import { Download, ArrowUpDown, Pencil, FileText, Wine } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useWineStore } from '../store/wineStore';
-import { WineCategory, WinePrices, CATEGORY_LABELS } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
+import { WinePrices } from '../types';
 import { formatCurrency } from '../utils/format';
 import { exportPricesToExcel } from '../utils/excel';
 import { generatePriceListPDF } from '../utils/pdf';
@@ -19,19 +20,18 @@ interface EditingCell {
   field: keyof WinePrices;
 }
 
-const ALL_CATEGORIES: WineCategory[] = ['tinto', 'blanco', 'rosado', 'espumante', 'dulce', 'otro'];
-
 export function PricesPage() {
   const { wines, updatePrices } = useWineStore();
+  const categories = useCategoryStore((s) => s.categories);
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<WineCategory | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [editing, setEditing] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const [pdfModal, setPdfModal] = useState(false);
-  const [pdfCategory, setPdfCategory] = useState<WineCategory | null>(null);
+  const [pdfCategory, setPdfCategory] = useState<string | null>(null);
 
   const filtered = wines
     .filter((w) => {
@@ -165,18 +165,18 @@ export function PricesPage() {
           >
             Todos
           </button>
-          {ALL_CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
+              key={cat.id}
+              onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
               className={clsx(
                 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-                categoryFilter === cat
+                categoryFilter === cat.id
                   ? 'bg-burgundy text-white border-burgundy'
                   : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
               )}
             >
-              {CATEGORY_LABELS[cat]}
+              {cat.label}
             </button>
           ))}
         </div>
@@ -194,17 +194,17 @@ export function PricesPage() {
             >
               Todas las categorías
             </button>
-            {ALL_CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
-                key={cat}
-                onClick={() => setPdfCategory(cat)}
+                key={cat.id}
+                onClick={() => setPdfCategory(cat.id)}
                 className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
-                  pdfCategory === cat ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                  pdfCategory === cat.id ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
                 )}
               >
-                {CATEGORY_LABELS[cat]}
+                {cat.label}
                 <span className="ml-2 text-xs opacity-60">
-                  ({wines.filter((w) => w.category === cat).length} vinos)
+                  ({wines.filter((w) => w.category === cat.id).length} vinos)
                 </span>
               </button>
             ))}

@@ -1,14 +1,16 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Order, Wine, WineCategory, PRICE_TYPE_LABELS, CATEGORY_LABELS } from '../types';
+import { Order, Wine, PRICE_TYPE_LABELS } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
 import { formatCurrency, formatDateShort } from './format';
 
-export function generatePriceListPDF(wines: Wine[], categoryFilter: WineCategory | null = null): void {
+export function generatePriceListPDF(wines: Wine[], categoryFilter: string | null = null): void {
+  const getLabel = useCategoryStore.getState().getLabel;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
 
   const filtered = categoryFilter ? wines.filter((w) => w.category === categoryFilter) : wines;
-  const categoryLabel = categoryFilter ? CATEGORY_LABELS[categoryFilter] : 'Todas las categorías';
+  const categoryLabel = categoryFilter ? getLabel(categoryFilter) : 'Todas las categorías';
 
   // Header
   doc.setFillColor(114, 47, 55);
@@ -58,7 +60,7 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: WineCategory
       doc.setTextColor(74, 28, 35);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
-      doc.text(CATEGORY_LABELS[cat].toUpperCase(), 15, startY + 5.5);
+      doc.text(getLabel(cat).toUpperCase(), 15, startY + 5.5);
       doc.text(`${catWines.length} vino${catWines.length !== 1 ? 's' : ''}`, pageW - 15, startY + 5.5, { align: 'right' });
 
       autoTable(doc, {

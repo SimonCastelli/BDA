@@ -1,58 +1,64 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { Order, OrderStatus } from '../types';
 import { generateId } from '../utils/format';
+import { api } from '../api';
 
 interface OrderStore {
   orders: Order[];
-  addOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => Order;
-  updateOrder: (id: string, updates: Partial<Omit<Order, 'id' | 'orderNumber' | 'createdAt'>>) => void;
-  updateStatus: (id: string, status: OrderStatus) => void;
-  deleteOrder: (id: string) => void;
+  isLoading: boolean;
+  init: () => Promise<void>;
+  addOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => Promise<Order>;
+  updateOrder: (id: string, updates: Partial<Omit<Order, 'id' | 'orderNumber' | 'createdAt'>>) => Promise<void>;
+  updateStatus: (id: string, status: OrderStatus) => Promise<void>;
+  deleteOrder: (id: string) => Promise<void>;
   getNextOrderNumber: () => string;
 }
 
-export const useOrderStore = create<OrderStore>()(
-  persist(
-    (set, get) => ({
-      orders: [],
+export const useOrderStore = create<OrderStore>()((set, get) => ({
+  orders: [],
+  isLoading: false,
 
-      getNextOrderNumber: () => {
-        const orders = get().orders;
-        const nums = orders
-          .map((o) => parseInt(o.orderNumber.replace('BDA-', ''), 10))
-          .filter((n) => !isNaN(n));
-        const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-        return `BDA-${String(next).padStart(4, '0')}`;
-      },
+  init: async () => {
+    set({ isLoading: true });
+    const orders = await api.orders.getAll();
+    set({ orders, isLoading: false });
+  },
 
-      addOrder: (orderData) => {
-        const order: Order = {
-          ...orderData,
-          id: generateId(),
-          orderNumber: get().getNextOrderNumber(),
-          createdAt: new Date().toISOString(),
-        };
-        set((s) => ({ orders: [order, ...s.orders] }));
-        return order;
-      },
+  getNextOrderNumber: () => {
+    const nums = get()
+      .orders.map((o) => parseInt(o.orderNumber.replace('BDA-', ''), 10))
+      .filter((n) => !isNaN(n));
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+    return `BDA-${String(next).padStart(4, '0')}`;
+  },
 
-      updateOrder: (id, updates) => {
-        set((s) => ({
-          orders: s.orders.map((o) => (o.id === id ? { ...o, ...updates } : o)),
-        }));
-      },
+  addOrder: async (orderData) => {
+    const order: Order = {
+      ...orderData,
+      id: generateId(),
+      orderNumber: get().getNextOrderNumber(),
+      createdAt: new Date().toISOString(),
+    };
+    await api.orders.create(order);
+    set((s) => ({ orders: [order, ...s.orders] }));
+    return order;
+  },
 
-      updateStatus: (id, status) => {
-        set((s) => ({
-          orders: s.orders.map((o) => (o.id === id ? { ...o, status } : o)),
-        }));
-      },
+  updateOrder: async (id, updates) => {
+    const order = get().orders.find((o) => o.id === id);
+    if (!order) return;
+    const updated = { ...order, ...updates };
+    await api.orders.update(id, updated);
+    set((s) => ({ orders: s.orders.map((o) => (o.id === id ? updated : o)) }));
+  },
 
-      deleteOrder: (id) => {
-        set((s) => ({ orders: s.orders.filter((o) => o.id !== id) }));
-      },
-    }),
-    { name: 'bda-orders' }
-  )
-);
+  updateStatus: async (id, status) => {
+    await api.orders.patchStatus(id, status);
+    set((s) => ({ orders: s.orders.map((o) => (o.id === id ? { ...o, status } : o)) }));
+  },
+
+  deleteOrder: async (id) => {
+    await api.orders.remove(id);
+    set((s) => ({ orders: s.orders.filter((o) => o.id !== id) }));
+  },
+}));

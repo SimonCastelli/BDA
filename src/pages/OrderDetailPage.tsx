@@ -43,11 +43,9 @@ export function OrderDetailPage() {
   });
   const totalToDeduct = deductions.reduce((s, d) => s + d.bottles, 0);
 
-  function confirmDeliver() {
-    for (const { item, bottles } of deductions) {
-      updateStock(item.wineId, -bottles);
-    }
-    updateStatus(order!.id, 'delivered');
+  async function confirmDeliver() {
+    await Promise.all(deductions.map(({ item, bottles }) => updateStock(item.wineId, -bottles)));
+    await updateStatus(order!.id, 'delivered');
     setShowDeliverModal(false);
   }
 

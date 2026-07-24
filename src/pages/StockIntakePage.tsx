@@ -3,7 +3,8 @@ import { PackagePlus, Search, Plus, X, Barcode, CheckCircle, AlertTriangle, Hist
 import { clsx } from 'clsx';
 import { useWineStore } from '../store/wineStore';
 import { useReceptionStore } from '../store/receptionStore';
-import { Wine, WineCategory, CATEGORY_LABELS, StockReceptionItem } from '../types';
+import { useCategoryStore } from '../store/categoryStore';
+import { Wine, StockReceptionItem } from '../types';
 import { formatCurrency, formatDate, formatDateShort, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -18,17 +19,15 @@ interface IntakeItem {
 }
 
 interface QuickWineForm {
-  name: string; code: string; category: WineCategory;
+  name: string; code: string; category: string;
   vintage: string; region: string; winery: string; varietal: string;
   bottlesPerCase: string; priceBottle: string; priceCase: string; priceMarket: string; notes: string;
 }
 
 const EMPTY_FORM = (code = ''): QuickWineForm => ({
-  name: '', code, category: 'tinto', vintage: '', region: '', winery: '',
+  name: '', code, category: '', vintage: '', region: '', winery: '',
   varietal: '', bottlesPerCase: '6', priceBottle: '0', priceCase: '0', priceMarket: '0', notes: '',
 });
-
-const ALL_CATEGORIES: WineCategory[] = ['tinto', 'blanco', 'rosado', 'espumante', 'dulce', 'otro'];
 
 type Tab = 'nueva' | 'historial';
 
@@ -37,6 +36,7 @@ type Tab = 'nueva' | 'historial';
 export function StockIntakePage() {
   const { wines, addWine, updateStock } = useWineStore();
   const { receptions, addReception, deleteReception } = useReceptionStore();
+  const categories = useCategoryStore((s) => s.categories);
 
   const [tab, setTab] = useState<Tab>('nueva');
   const [scanInput, setScanInput] = useState('');
@@ -135,9 +135,9 @@ export function StockIntakePage() {
     return Object.keys(errs).length === 0;
   }
 
-  function handleSaveNewWine() {
+  async function handleSaveNewWine() {
     if (!validateForm()) return;
-    const wine = addWine({
+    const wine = await addWine({
       name: form.name.trim(), code: form.code.trim(), category: form.category,
       ...(form.vintage ? { vintage: parseInt(form.vintage) } : {}),
       ...(form.region.trim() ? { region: form.region.trim() } : {}),
@@ -153,17 +153,13 @@ export function StockIntakePage() {
     scanRef.current?.focus();
   }
 
-  function applyStock() {
-    // Update stock
-    for (const item of intakeItems) {
-      updateStock(item.wine.id, item.quantity);
-    }
-    // Save reception record
+  async function applyStock() {
+    await Promise.all(intakeItems.map((item) => updateStock(item.wine.id, item.quantity)));
     const items: StockReceptionItem[] = intakeItems.map((i) => ({
       wineId: i.wine.id, wineName: i.wine.name, wineCode: i.wine.code,
       quantity: i.quantity, isNew: i.isNew,
     }));
-    addReception(items, intakeNotes.trim() || undefined);
+    await addReception(items, intakeNotes.trim() || undefined);
 
     setIntakeItems([]);
     setScanInput(''); setNotFoundCode(''); setIntakeNotes('');
@@ -464,8 +460,8 @@ export function StockIntakePage() {
             </div>
             <div>
               <label className="label">Categoría</label>
-              <select value={form.category} onChange={(e) => setField('category', e.target.value as WineCategory)} className="input">
-                {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+              <select value={form.category || categories[0]?.id || ''} onChange={(e) => setField('category', e.target.value)} className="input">
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
             <div>

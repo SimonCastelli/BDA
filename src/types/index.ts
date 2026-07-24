@@ -1,4 +1,23 @@
-export type WineCategory = 'tinto' | 'blanco' | 'rosado' | 'espumante' | 'dulce' | 'otro';
+export type WineCategory = string;
+
+export interface Category {
+  id: string;
+  label: string;
+  color: string;
+}
+
+export const COLOR_OPTIONS: { value: string; label: string }[] = [
+  { value: 'bg-red-100 text-red-800 border-red-200',        label: 'Rojo' },
+  { value: 'bg-yellow-50 text-yellow-800 border-yellow-200', label: 'Amarillo' },
+  { value: 'bg-pink-100 text-pink-700 border-pink-200',      label: 'Rosa' },
+  { value: 'bg-blue-50 text-blue-700 border-blue-200',       label: 'Azul' },
+  { value: 'bg-amber-100 text-amber-800 border-amber-200',   label: 'Ámbar' },
+  { value: 'bg-gray-100 text-gray-700 border-gray-200',      label: 'Gris' },
+  { value: 'bg-green-100 text-green-700 border-green-200',   label: 'Verde' },
+  { value: 'bg-purple-100 text-purple-700 border-purple-200', label: 'Violeta' },
+  { value: 'bg-orange-100 text-orange-700 border-orange-200', label: 'Naranja' },
+  { value: 'bg-teal-100 text-teal-700 border-teal-200',      label: 'Verde agua' },
+];
 
 export interface WinePrices {
   bottle: number;
@@ -62,14 +81,6 @@ export interface Order {
   deliveryDate?: string;
 }
 
-export const CATEGORY_LABELS: Record<WineCategory, string> = {
-  tinto: 'Tinto',
-  blanco: 'Blanco',
-  rosado: 'Rosado',
-  espumante: 'Espumante',
-  dulce: 'Dulce',
-  otro: 'Otro',
-};
 
 export const STATUS_LABELS: Record<OrderStatus, string> = {
   draft: 'Borrador',
