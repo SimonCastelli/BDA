@@ -1,4 +1,4 @@
-import { Wine, WinePrices, Order, OrderStatus, Contact, StockReception, Category } from '../types';
+import { Wine, WinePrices, Order, OrderStatus, Contact, StockReception, Category, Liquidacion } from '../types';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -52,5 +52,10 @@ export const api = {
     create: (c: Category) => post<Category>('/categories', c),
     update: (id: string, c: Category) => put<Category>(`/categories/${id}`, c),
     remove: (id: string) => del<{ ok: boolean }>(`/categories/${id}`),
+  },
+  liquidaciones: {
+    getAll: () => get<Liquidacion[]>('/liquidaciones'),
+    create: (l: Liquidacion) => post<Liquidacion>('/liquidaciones', l),
+    remove: (id: string) => del<{ ok: boolean }>(`/liquidaciones/${id}`),
   },
 };

@@ -60,6 +60,7 @@ export interface OrderItem {
 
 export interface Client {
   name: string;
+  company?: string;
   phone?: string;
   address?: string;
   email?: string;
@@ -69,6 +70,7 @@ export interface Client {
 export interface Order {
   id: string;
   orderNumber: string;
+  contactId?: string;
   client: Client;
   items: OrderItem[];
   subtotal: number;
@@ -103,6 +105,30 @@ export const PRICE_TYPE_SHORT: Record<PriceType, string> = {
   custom: 'Personalizado',
 };
 
+export interface LiquidacionItem {
+  id: string;
+  wineId: string;
+  wineName: string;
+  wineCode: string;
+  quantity: number;
+  unit: OrderUnit;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface Liquidacion {
+  id: string;
+  liquidacionNumber: string;
+  client: Client;
+  items: LiquidacionItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  notes?: string;
+  paymentMethod?: string;
+  createdAt: string;
+}
+
 export interface StockReceptionItem {
   wineId: string;
   wineName: string;
@@ -130,6 +156,7 @@ export interface Contact {
   email?: string;
   cuit?: string;
   defaultPriceType: 'bottle' | 'case' | 'market';
+  serialNumber?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;

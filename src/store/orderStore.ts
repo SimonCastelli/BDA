@@ -7,11 +7,13 @@ interface OrderStore {
   orders: Order[];
   isLoading: boolean;
   init: () => Promise<void>;
-  addOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>) => Promise<Order>;
+  addOrder: (
+    order: Omit<Order, 'id' | 'orderNumber' | 'createdAt'>,
+    contactSerial?: number
+  ) => Promise<Order>;
   updateOrder: (id: string, updates: Partial<Omit<Order, 'id' | 'orderNumber' | 'createdAt'>>) => Promise<void>;
   updateStatus: (id: string, status: OrderStatus) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
-  getNextOrderNumber: () => string;
 }
 
 export const useOrderStore = create<OrderStore>()((set, get) => ({
@@ -24,19 +26,27 @@ export const useOrderStore = create<OrderStore>()((set, get) => ({
     set({ orders, isLoading: false });
   },
 
-  getNextOrderNumber: () => {
-    const nums = get()
-      .orders.map((o) => parseInt(o.orderNumber.replace('BDA-', ''), 10))
-      .filter((n) => !isNaN(n));
-    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-    return `BDA-${String(next).padStart(4, '0')}`;
-  },
+  addOrder: async (orderData, contactSerial) => {
+    let orderNumber: string;
 
-  addOrder: async (orderData) => {
+    if (orderData.contactId && contactSerial !== undefined) {
+      // Count existing orders for this contact
+      const contactOrders = get().orders.filter((o) => o.contactId === orderData.contactId);
+      const seq = contactOrders.length + 1;
+      orderNumber = `${String(contactSerial).padStart(3, '0')}-${String(seq).padStart(4, '0')}`;
+    } else {
+      // Fallback: global BDA-XXXX numbering
+      const nums = get()
+        .orders.map((o) => parseInt(o.orderNumber.replace('BDA-', ''), 10))
+        .filter((n) => !isNaN(n));
+      const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+      orderNumber = `BDA-${String(next).padStart(4, '0')}`;
+    }
+
     const order: Order = {
       ...orderData,
       id: generateId(),
-      orderNumber: get().getNextOrderNumber(),
+      orderNumber,
       createdAt: new Date().toISOString(),
     };
     await api.orders.create(order);

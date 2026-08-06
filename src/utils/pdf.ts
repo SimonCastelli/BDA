@@ -1,16 +1,29 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Order, Wine, PRICE_TYPE_LABELS } from '../types';
+import { Order, Wine, Liquidacion, PRICE_TYPE_LABELS } from '../types';
 import { useCategoryStore } from '../store/categoryStore';
 import { formatCurrency, formatDateShort } from './format';
 
-export function generatePriceListPDF(wines: Wine[], categoryFilter: string | null = null): void {
+type PriceColumn = 'bottle' | 'case' | 'market';
+
+const PRICE_COLUMN_LABEL: Record<PriceColumn, string> = {
+  bottle: 'Botella Suelta',
+  case: 'Caja Entera',
+  market: 'Mercado / Rest.',
+};
+
+export function generatePriceListPDF(
+  wines: Wine[],
+  categoryFilter: string | null = null,
+  priceColumn: PriceColumn | null = null,
+): void {
   const getLabel = useCategoryStore.getState().getLabel;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
 
   const filtered = categoryFilter ? wines.filter((w) => w.category === categoryFilter) : wines;
   const categoryLabel = categoryFilter ? getLabel(categoryFilter) : 'Todas las categorías';
+  const priceLabel = priceColumn ? PRICE_COLUMN_LABEL[priceColumn] : 'Todos los precios';
 
   // Header
   doc.setFillColor(114, 47, 55);
@@ -31,7 +44,7 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(categoryLabel, pageW - 15, 25, { align: 'right' });
+  doc.text(`${categoryLabel} · ${priceLabel}`, pageW - 15, 25, { align: 'right' });
   doc.text(formatDateShort(new Date().toISOString()), pageW - 15, 31, { align: 'right' });
 
   // Price channel explanation
@@ -43,9 +56,57 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
   doc.setTextColor(80, 80, 80);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('Botella Suelta: precio por botella individual  ·  Caja Entera: precio por caja completa  ·  Mercado/Rest.: precio para restaurantes y mayoristas', pageW / 2, 54, { align: 'center' });
+  const channelNote = priceColumn
+    ? `Canal de precio: ${PRICE_COLUMN_LABEL[priceColumn]}`
+    : 'Botella Suelta: precio por botella individual  ·  Caja Entera: precio por caja completa  ·  Mercado/Rest.: precio para restaurantes y mayoristas';
+  doc.text(channelNote, pageW / 2, 54, { align: 'center' });
 
-  // Group by category if "all" selected
+  function buildHead(): string[][] {
+    if (priceColumn) return [['Código', 'Nombre', 'Bodega / Varietal', 'Cosecha', PRICE_COLUMN_LABEL[priceColumn]]];
+    return [['Código', 'Nombre', 'Bodega / Varietal', 'Cosecha', 'Botella Suelta', 'Caja Entera', 'Mercado/Rest.']];
+  }
+
+  function buildRow(w: Wine): (string | number)[] {
+    const base = [
+      w.code,
+      w.name,
+      [w.winery, w.varietal].filter(Boolean).join(' · ') || '-',
+      w.vintage ?? '-',
+    ];
+    if (priceColumn) return [...base, formatCurrency(w.prices[priceColumn])];
+    return [...base, formatCurrency(w.prices.bottle), formatCurrency(w.prices.case), formatCurrency(w.prices.market)];
+  }
+
+  function buildColumnStyles(): { [key: string]: object } {
+    if (priceColumn) {
+      return {
+        0: { cellWidth: 26 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 56 },
+        3: { cellWidth: 16, halign: 'center' },
+        4: { cellWidth: 30, halign: 'right' },
+      };
+    }
+    return {
+      0: { cellWidth: 24 },
+      1: { cellWidth: 48 },
+      2: { cellWidth: 44 },
+      3: { cellWidth: 15, halign: 'center' },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 22, halign: 'right' },
+      6: { cellWidth: 22, halign: 'right' },
+    };
+  }
+
+  const tableOptions = {
+    theme: 'striped' as const,
+    headStyles: { fillColor: [114, 47, 55] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontSize: 8, fontStyle: 'bold' as const },
+    bodyStyles: { fontSize: 8, textColor: [45, 45, 45] as [number, number, number] },
+    alternateRowStyles: { fillColor: [250, 246, 240] as [number, number, number] },
+    columnStyles: buildColumnStyles(),
+    margin: { left: 10, right: 10 },
+  };
+
   if (!categoryFilter) {
     const cats = Array.from(new Set(filtered.map((w) => w.category)));
     let startY = 68;
@@ -54,7 +115,6 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
       const catWines = filtered.filter((w) => w.category === cat);
       if (catWines.length === 0) continue;
 
-      // Category header
       doc.setFillColor(196, 163, 90);
       doc.roundedRect(10, startY, pageW - 20, 8, 2, 2, 'F');
       doc.setTextColor(74, 28, 35);
@@ -63,33 +123,7 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
       doc.text(getLabel(cat).toUpperCase(), 15, startY + 5.5);
       doc.text(`${catWines.length} vino${catWines.length !== 1 ? 's' : ''}`, pageW - 15, startY + 5.5, { align: 'right' });
 
-      autoTable(doc, {
-        startY: startY + 10,
-        head: [['Código', 'Nombre', 'Bodega / Varietal', 'Cosecha', 'Botella Suelta', 'Caja Entera', 'Mercado/Rest.']],
-        body: catWines.map((w) => [
-          w.code,
-          w.name,
-          [w.winery, w.varietal].filter(Boolean).join(' · ') || '-',
-          w.vintage ?? '-',
-          formatCurrency(w.prices.bottle),
-          formatCurrency(w.prices.case),
-          formatCurrency(w.prices.market),
-        ]),
-        theme: 'striped',
-        headStyles: { fillColor: [114, 47, 55], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
-        bodyStyles: { fontSize: 8, textColor: [45, 45, 45] },
-        alternateRowStyles: { fillColor: [250, 246, 240] },
-        columnStyles: {
-          0: { cellWidth: 24 },
-          1: { cellWidth: 48 },
-          2: { cellWidth: 44 },
-          3: { cellWidth: 15, halign: 'center' },
-          4: { cellWidth: 22, halign: 'right' },
-          5: { cellWidth: 22, halign: 'right' },
-          6: { cellWidth: 22, halign: 'right' },
-        },
-        margin: { left: 10, right: 10 },
-      });
+      autoTable(doc, { startY: startY + 10, head: buildHead(), body: catWines.map(buildRow), ...tableOptions });
 
       startY = (doc as any).lastAutoTable.finalY + 8;
       if (startY > doc.internal.pageSize.getHeight() - 30) {
@@ -98,33 +132,7 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
       }
     }
   } else {
-    autoTable(doc, {
-      startY: 68,
-      head: [['Código', 'Nombre', 'Bodega / Varietal', 'Cosecha', 'Botella Suelta', 'Caja Entera', 'Mercado/Rest.']],
-      body: filtered.map((w) => [
-        w.code,
-        w.name,
-        [w.winery, w.varietal].filter(Boolean).join(' · ') || '-',
-        w.vintage ?? '-',
-        formatCurrency(w.prices.bottle),
-        formatCurrency(w.prices.case),
-        formatCurrency(w.prices.market),
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: [114, 47, 55], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 8, textColor: [45, 45, 45] },
-      alternateRowStyles: { fillColor: [250, 246, 240] },
-      columnStyles: {
-        0: { cellWidth: 24 },
-        1: { cellWidth: 48 },
-        2: { cellWidth: 44 },
-        3: { cellWidth: 15, halign: 'center' },
-        4: { cellWidth: 22, halign: 'right' },
-        5: { cellWidth: 22, halign: 'right' },
-        6: { cellWidth: 22, halign: 'right' },
-      },
-      margin: { left: 10, right: 10 },
-    });
+    autoTable(doc, { startY: 68, head: buildHead(), body: filtered.map(buildRow), ...tableOptions });
   }
 
   // Footer on each page
@@ -143,8 +151,9 @@ export function generatePriceListPDF(wines: Wine[], categoryFilter: string | nul
   }
 
   const catSuffix = categoryFilter ? `_${categoryFilter}` : '_todas';
+  const priceSuffix = priceColumn ? `_${priceColumn}` : '';
   const date = new Date().toISOString().slice(0, 10);
-  doc.save(`BDA_ListaPrecios${catSuffix}_${date}.pdf`);
+  doc.save(`BDA_ListaPrecios${catSuffix}${priceSuffix}_${date}.pdf`);
 }
 
 export function generateRemitoPDF(order: Order): void {
@@ -205,23 +214,17 @@ export function generateRemitoPDF(order: Order): void {
   doc.text('DATOS DEL CLIENTE', 15, 60);
 
   doc.setTextColor(45, 45, 45);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(order.client.name, 15, 68);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(order.client.company || order.client.name, 15, 69);
 
-  doc.setFontSize(9);
-  let y = 75;
-  if (order.client.phone) {
-    doc.text(`Tel: ${order.client.phone}`, 15, y);
-    y += 6;
-  }
-  if (order.client.address) {
-    const lines = doc.splitTextToSize(`Dir: ${order.client.address}`, 78);
-    doc.text(lines, 15, y);
-    y += lines.length * 5;
-  }
   if (order.client.cuit) {
-    doc.text(`CUIT: ${order.client.cuit}`, 15, y);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(114, 47, 55);
+    doc.text(`CUIT: ${order.client.cuit}`, 15, 78);
+    doc.setTextColor(45, 45, 45);
+    doc.setFont('helvetica', 'normal');
   }
 
   // Order info box
@@ -340,4 +343,177 @@ export function generateRemitoPDF(order: Order): void {
   doc.text(`Generado el ${formatDateShort(new Date().toISOString())}`, pageW / 2, footerY + 5, { align: 'center' });
 
   doc.save(`BDA_Remito_${order.orderNumber}.pdf`);
+}
+
+export function generateLiquidacionPDF(liq: Liquidacion): void {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(114, 47, 55);
+  doc.rect(0, 0, pageW, 45, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(28);
+  doc.text('BDA', 15, 20);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Bodega de Amigos', 15, 28);
+
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('LIQUIDACIÓN', pageW - 15, 20, { align: 'right' });
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`N° ${liq.liquidacionNumber}`, pageW - 15, 28, { align: 'right' });
+  doc.text(`Fecha: ${formatDateShort(liq.createdAt)}`, pageW - 15, 35, { align: 'right' });
+
+  // Client info
+  doc.setFillColor(250, 246, 240);
+  doc.roundedRect(10, 52, 90, 45, 3, 3, 'F');
+  doc.setDrawColor(196, 163, 90);
+  doc.roundedRect(10, 52, 90, 45, 3, 3, 'S');
+
+  doc.setTextColor(114, 47, 55);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DATOS DEL CLIENTE', 15, 60);
+
+  doc.setTextColor(45, 45, 45);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text(liq.client.company || liq.client.name, 15, 68);
+
+  doc.setFontSize(9);
+  let cy = 75;
+  if (liq.client.company) {
+    doc.setFont('helvetica', 'normal');
+    doc.text(liq.client.name, 15, cy);
+    cy += 6;
+  }
+  if (liq.client.cuit) {
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(114, 47, 55);
+    doc.text(`CUIT: ${liq.client.cuit}`, 15, cy);
+    doc.setTextColor(45, 45, 45);
+    doc.setFont('helvetica', 'normal');
+    cy += 6;
+  }
+  if (liq.client.phone) {
+    doc.text(`Tel: ${liq.client.phone}`, 15, cy);
+    cy += 6;
+  }
+  if (liq.client.address) {
+    const lines = doc.splitTextToSize(`Dir: ${liq.client.address}`, 78);
+    doc.text(lines, 15, cy);
+  }
+
+  // Order info box
+  doc.setFillColor(250, 246, 240);
+  doc.roundedRect(110, 52, 90, 45, 3, 3, 'F');
+  doc.setDrawColor(196, 163, 90);
+  doc.roundedRect(110, 52, 90, 45, 3, 3, 'S');
+
+  doc.setTextColor(114, 47, 55);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DETALLES', 115, 60);
+
+  doc.setTextColor(45, 45, 45);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`N°: ${liq.liquidacionNumber}`, 115, 68);
+  doc.text(`Fecha: ${formatDateShort(liq.createdAt)}`, 115, 74);
+  if (liq.paymentMethod) {
+    doc.text(`Pago: ${liq.paymentMethod}`, 115, 80);
+  }
+
+  // Items table
+  autoTable(doc, {
+    startY: 105,
+    head: [['#', 'Producto', 'Unid.', 'Cant.', 'Precio Unit.', 'Subtotal']],
+    body: liq.items.map((item, i) => [
+      i + 1,
+      `${item.wineName}\n${item.wineCode}`,
+      item.unit === 'bottle' ? 'Botella' : 'Caja',
+      item.quantity,
+      formatCurrency(item.unitPrice),
+      formatCurrency(item.subtotal),
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [114, 47, 55], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 9, textColor: [45, 45, 45] },
+    alternateRowStyles: { fillColor: [250, 246, 240] },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 70 },
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 15, halign: 'center' },
+      4: { cellWidth: 30, halign: 'right' },
+      5: { cellWidth: 30, halign: 'right' },
+    },
+    margin: { left: 10, right: 10 },
+  });
+
+  const finalY = (doc as any).lastAutoTable.finalY + 6;
+
+  // Totals
+  const totalsX = pageW - 80;
+  doc.setFillColor(250, 246, 240);
+  doc.roundedRect(totalsX - 5, finalY, 75, liq.discount > 0 ? 30 : 22, 3, 3, 'F');
+  doc.setDrawColor(196, 163, 90);
+  doc.roundedRect(totalsX - 5, finalY, 75, liq.discount > 0 ? 30 : 22, 3, 3, 'S');
+
+  let ty = finalY + 8;
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Subtotal:', totalsX, ty);
+  doc.text(formatCurrency(liq.subtotal), pageW - 15, ty, { align: 'right' });
+
+  if (liq.discount > 0) {
+    ty += 7;
+    doc.setTextColor(34, 140, 34);
+    doc.text(`Descuento (${liq.discount}%):`, totalsX, ty);
+    doc.text(`-${formatCurrency(liq.subtotal * liq.discount / 100)}`, pageW - 15, ty, { align: 'right' });
+  }
+
+  ty += 9;
+  doc.setFillColor(114, 47, 55);
+  doc.roundedRect(totalsX - 5, ty - 6, 75, 12, 2, 2, 'F');
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('TOTAL:', totalsX, ty + 2);
+  doc.text(formatCurrency(liq.total), pageW - 15, ty + 2, { align: 'right' });
+
+  if (liq.notes) {
+    const notesY = finalY;
+    doc.setFillColor(255, 255, 230);
+    doc.roundedRect(10, notesY, totalsX - 25, liq.discount > 0 ? 30 : 22, 3, 3, 'F');
+    doc.setDrawColor(200, 200, 100);
+    doc.roundedRect(10, notesY, totalsX - 25, liq.discount > 0 ? 30 : 22, 3, 3, 'S');
+    doc.setTextColor(100, 100, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('Observaciones:', 15, notesY + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    const noteLines = doc.splitTextToSize(liq.notes, totalsX - 35);
+    doc.text(noteLines, 15, notesY + 14);
+  }
+
+  const footerY = doc.internal.pageSize.getHeight() - 15;
+  doc.setDrawColor(196, 163, 90);
+  doc.setLineWidth(0.3);
+  doc.line(10, footerY - 5, pageW - 10, footerY - 5);
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.setFont('helvetica', 'normal');
+  doc.text('BDA · Bodega de Amigos', pageW / 2, footerY, { align: 'center' });
+  doc.text(`Generado el ${formatDateShort(new Date().toISOString())}`, pageW / 2, footerY + 5, { align: 'center' });
+
+  doc.save(`BDA_Liquidacion_${liq.liquidacionNumber}.pdf`);
 }

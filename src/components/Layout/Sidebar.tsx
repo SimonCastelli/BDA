@@ -1,15 +1,16 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Package, Tag, ClipboardList, Plus, Users, PackagePlus, Settings } from 'lucide-react';
+import { LayoutDashboard, Package, Tag, ClipboardList, Plus, Users, PackagePlus, Settings, Receipt } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const navItems = [
-  { to: '/',              icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/stock',         icon: Package,         label: 'Inventario' },
-  { to: '/precios',       icon: Tag,             label: 'Precios' },
-  { to: '/pedidos',       icon: ClipboardList,   label: 'Pedidos' },
-  { to: '/contactos',     icon: Users,           label: 'Contactos' },
-  { to: '/recepcion',     icon: PackagePlus,     label: 'Recepción' },
-  { to: '/configuracion', icon: Settings,        label: 'Configuración' },
+  { to: '/',               icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/stock',          icon: Package,         label: 'Inventario' },
+  { to: '/precios',        icon: Tag,             label: 'Precios' },
+  { to: '/pedidos',        icon: ClipboardList,   label: 'Pedidos' },
+  { to: '/liquidaciones',  icon: Receipt,         label: 'Liquidaciones' },
+  { to: '/contactos',      icon: Users,           label: 'Contactos' },
+  { to: '/recepcion',      icon: PackagePlus,     label: 'Recepción' },
+  { to: '/configuracion',  icon: Settings,        label: 'Configuración' },
 ];
 
 export function Sidebar() {

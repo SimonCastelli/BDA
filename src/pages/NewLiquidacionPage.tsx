@@ -1,64 +1,66 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, X, ShoppingCart, Users, Search, Check } from 'lucide-react';
+import { ArrowLeft, Plus, X, Receipt, Users, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useWineStore } from '../store/wineStore';
-import { useOrderStore } from '../store/orderStore';
 import { useContactStore } from '../store/contactStore';
 import { useCategoryStore } from '../store/categoryStore';
-import {
-  Client, OrderItem, OrderStatus, OrderUnit, PriceType,
-  PRICE_TYPE_LABELS, PRICE_TYPE_SHORT, Contact,
-} from '../types';
+import { useLiquidacionStore } from '../store/liquidacionStore';
+import { Client, LiquidacionItem, OrderUnit, Contact } from '../types';
 import { formatCurrency, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 
+type PriceChannel = 'bottle' | 'case' | 'market';
+
 interface WineRowState {
   quantity: number;
   unit: OrderUnit;
-  priceType: PriceType;
+  priceType: PriceChannel;
+  customPrice: string;
 }
 
-const PRICE_CHANNELS: { value: 'bottle' | 'case' | 'market'; label: string; desc: string }[] = [
-  { value: 'bottle', label: 'Botella Suelta', desc: 'Venta individual' },
-  { value: 'case',   label: 'Caja Entera',   desc: 'Venta por caja' },
-  { value: 'market', label: 'Mercado / Rest.', desc: 'Para restaurantes o mayoristas' },
-];
-
-const PRICE_CHANNEL_COLORS: Record<'bottle' | 'case' | 'market', string> = {
-  bottle: 'border-amber-400 bg-amber-50 text-amber-900',
-  case:   'border-blue-400 bg-blue-50 text-blue-900',
-  market: 'border-purple-400 bg-purple-50 text-purple-900',
+const CHANNEL_LABELS: Record<PriceChannel, string> = {
+  bottle: 'Botella',
+  case: 'Caja',
+  market: 'Mercado',
 };
-const PRICE_CHANNEL_ACTIVE: Record<'bottle' | 'case' | 'market', string> = {
+
+const CHANNEL_COLORS: Record<PriceChannel, string> = {
+  bottle: 'bg-amber-50 text-amber-800 border-amber-300',
+  case:   'bg-blue-50 text-blue-700 border-blue-300',
+  market: 'bg-purple-50 text-purple-700 border-purple-300',
+};
+
+const CHANNEL_ACTIVE: Record<PriceChannel, string> = {
   bottle: 'bg-amber-500 text-white border-amber-500',
   case:   'bg-blue-600 text-white border-blue-600',
   market: 'bg-purple-600 text-white border-purple-600',
 };
 
-export function NewOrderPage() {
+function parsePrice(v: string): number {
+  return parseFloat(v.replace(',', '.')) || 0;
+}
+
+function getWinePrice(wine: { prices: { bottle: number; case: number; market: number } }, type: PriceChannel): number {
+  return type === 'case' ? wine.prices.case : type === 'market' ? wine.prices.market : wine.prices.bottle;
+}
+
+export function NewLiquidacionPage() {
   const navigate = useNavigate();
   const { wines } = useWineStore();
-  const { addOrder } = useOrderStore();
   const { contacts } = useContactStore();
+  const { addLiquidacion } = useLiquidacionStore();
   const getLabel = useCategoryStore((s) => s.getLabel);
 
   const [search, setSearch] = useState('');
   const [wineRows, setWineRows] = useState<Record<string, WineRowState>>({});
-  const [items, setItems] = useState<OrderItem[]>([]);
-  const [defaultPriceType, setDefaultPriceType] = useState<'bottle' | 'case' | 'market'>('bottle');
+  const [items, setItems] = useState<LiquidacionItem[]>([]);
   const [client, setClient] = useState<Client>({ name: '', company: '', phone: '', address: '', email: '', cuit: '' });
-  const [selectedContactId, setSelectedContactId] = useState<string | undefined>(undefined);
-  const [selectedContactSerial, setSelectedContactSerial] = useState<number | undefined>(undefined);
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [status, setStatus] = useState<OrderStatus>('confirmed');
   const [errors, setErrors] = useState<{ client?: string; items?: string }>({});
-  // wineId → true means user already saw the stock warning and wants to add anyway
-  const [stockWarned, setStockWarned] = useState<Record<string, boolean>>({});
 
   const [contactModal, setContactModal] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
@@ -85,22 +87,22 @@ export function NewOrderPage() {
     );
   });
 
-  function getRow(wineId: string): WineRowState {
-    return wineRows[wineId] ?? { quantity: 1, unit: 'bottle', priceType: defaultPriceType };
+  function getRow(wineId: string, defaultPrice: number): WineRowState {
+    return wineRows[wineId] ?? { quantity: 1, unit: 'bottle', priceType: 'bottle', customPrice: String(defaultPrice) };
   }
 
-  function setRow(wineId: string, patch: Partial<WineRowState>) {
-    setWineRows((prev) => ({ ...prev, [wineId]: { ...getRow(wineId), ...patch } }));
-  }
-
-  function handlePriceTypeChange(pt: 'bottle' | 'case' | 'market') {
-    setDefaultPriceType(pt);
+  function setRow(wineId: string, patch: Partial<WineRowState>, wine: { prices: { bottle: number; case: number; market: number } }) {
     setWineRows((prev) => {
-      const updated: Record<string, WineRowState> = {};
-      for (const [id, row] of Object.entries(prev)) {
-        updated[id] = { ...row, priceType: pt };
+      const current = prev[wineId] ?? { quantity: 1, unit: 'bottle', priceType: 'bottle', customPrice: String(wine.prices.bottle) };
+      const next = { ...current, ...patch };
+      // Auto-update price when channel or unit changes (unless customPrice was explicitly patched)
+      if ((patch.priceType || patch.unit) && !patch.customPrice) {
+        const effectiveType: PriceChannel = next.unit === 'case' ? 'case' : next.priceType;
+        next.customPrice = String(getWinePrice(wine, effectiveType));
+        if (patch.unit === 'case') next.priceType = 'case';
+        if (patch.unit === 'bottle' && current.unit === 'case') next.priceType = 'bottle';
       }
-      return updated;
+      return { ...prev, [wineId]: next };
     });
   }
 
@@ -113,9 +115,6 @@ export function NewOrderPage() {
       email: contact.email ?? '',
       cuit: contact.cuit ?? '',
     });
-    setSelectedContactId(contact.id);
-    setSelectedContactSerial(contact.serialNumber);
-    handlePriceTypeChange(contact.defaultPriceType);
     setContactModal(false);
     setContactSearch('');
   }
@@ -123,37 +122,14 @@ export function NewOrderPage() {
   function addItem(wineId: string) {
     const wine = wines.find((w) => w.id === wineId);
     if (!wine) return;
-    const row = getRow(wineId);
-    const { quantity, unit, priceType } = row;
-    if (quantity <= 0) return;
-
-    // Stock warning: warn once, allow on second attempt
-    const bottlesNeeded = unit === 'case' ? quantity * wine.bottlesPerCase : quantity;
-    const hasStockIssue = wine.stock === 0 || bottlesNeeded > wine.stock;
-    if (hasStockIssue && !stockWarned[wineId]) {
-      setStockWarned((prev) => ({ ...prev, [wineId]: true }));
-      return;
-    }
-    // Clear warning once added
-    if (stockWarned[wineId]) {
-      setStockWarned((prev) => { const n = { ...prev }; delete n[wineId]; return n; });
-    }
-
-    const unitPrice =
-      unit === 'case'
-        ? wine.prices.case
-        : priceType === 'market'
-        ? wine.prices.market
-        : priceType === 'case'
-        ? wine.prices.case
-        : wine.prices.bottle;
-
+    const row = getRow(wineId, wine.prices.bottle);
+    const { quantity, unit } = row;
+    const unitPrice = parsePrice(row.customPrice);
+    if (quantity <= 0 || unitPrice < 0) return;
     const subtotal = quantity * unitPrice;
 
     setItems((prev) => {
-      const existing = prev.findIndex(
-        (i) => i.wineId === wineId && i.unit === unit && i.priceType === (unit === 'case' ? 'case' : priceType)
-      );
+      const existing = prev.findIndex((i) => i.wineId === wineId && i.unit === unit && i.unitPrice === unitPrice);
       if (existing >= 0) {
         return prev.map((item, idx) =>
           idx === existing
@@ -161,18 +137,7 @@ export function NewOrderPage() {
             : item
         );
       }
-      const newItem: OrderItem = {
-        id: generateId(),
-        wineId: wine.id,
-        wineName: wine.name,
-        wineCode: wine.code,
-        quantity,
-        unit,
-        priceType: unit === 'case' ? 'case' : priceType,
-        unitPrice,
-        subtotal,
-      };
-      return [...prev, newItem];
+      return [...prev, { id: generateId(), wineId: wine.id, wineName: wine.name, wineCode: wine.code, quantity, unit, unitPrice, subtotal }];
     });
   }
 
@@ -200,62 +165,36 @@ export function NewOrderPage() {
       ...(client.cuit?.trim() ? { cuit: client.cuit.trim() } : {}),
     };
 
-    const order = await addOrder({
+    await addLiquidacion({
       client: cleanClient,
-      ...(selectedContactId ? { contactId: selectedContactId } : {}),
       items,
       subtotal,
       discount,
       total,
-      status,
       ...(paymentMethod.trim() ? { paymentMethod: paymentMethod.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
-      ...(deliveryDate ? { deliveryDate } : {}),
-    }, selectedContactSerial);
+    });
 
-    navigate(`/pedidos/${order.id}`);
+    navigate('/liquidaciones');
   }
-
-  const activePriceChannel = PRICE_CHANNELS.find((p) => p.value === defaultPriceType)!;
 
   return (
     <div className="p-6">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/pedidos')} className="btn-ghost">
+        <button onClick={() => navigate('/liquidaciones')} className="btn-ghost">
           <ArrowLeft size={16} />
           Volver
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">Nuevo Pedido</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Nueva Liquidación</h1>
       </div>
 
       <div className="flex gap-6 items-start">
         {/* Left: wine selection */}
         <div className="flex-1 min-w-0 space-y-4">
           <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800">Agregar Vinos</h2>
-            </div>
-
-            {/* Default price channel selector */}
             <div>
-              <p className="label mb-2">Canal de precio por defecto</p>
-              <div className="flex gap-2">
-                {PRICE_CHANNELS.map((ch) => (
-                  <button
-                    key={ch.value}
-                    onClick={() => handlePriceTypeChange(ch.value)}
-                    className={clsx(
-                      'flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left',
-                      defaultPriceType === ch.value
-                        ? PRICE_CHANNEL_ACTIVE[ch.value]
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    )}
-                  >
-                    <div className="font-semibold">{ch.label}</div>
-                    <div className={clsx('text-xs mt-0.5', defaultPriceType === ch.value ? 'opacity-80' : 'text-gray-400')}>{ch.desc}</div>
-                  </button>
-                ))}
-              </div>
+              <h2 className="text-base font-semibold text-gray-800">Agregar Vinos</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Seleccioná el canal de precio por vino. Podés editarlo manualmente. No afecta el stock.</p>
             </div>
 
             <input
@@ -272,18 +211,11 @@ export function NewOrderPage() {
                 <p className="text-sm text-gray-400 text-center py-6">Sin resultados</p>
               ) : (
                 filteredWines.map((wine) => {
-                  const row = getRow(wine.id);
-                  const isCase = row.unit === 'case';
-                  const effectivePriceType: PriceType = isCase ? 'case' : row.priceType;
-                  const unitPrice =
-                    effectivePriceType === 'market' ? wine.prices.market
-                    : effectivePriceType === 'case' ? wine.prices.case
-                    : wine.prices.bottle;
+                  const row = getRow(wine.id, wine.prices.bottle);
+                  const effectiveType: PriceChannel = row.unit === 'case' ? 'case' : row.priceType;
 
-                  const isWarned = !!stockWarned[wine.id];
-                  const bottlesNeeded = row.unit === 'case' ? row.quantity * wine.bottlesPerCase : row.quantity;
                   return (
-                    <div key={wine.id} className={clsx('flex flex-wrap items-center gap-2 p-3 rounded-lg border transition-colors', isWarned ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50 hover:bg-cream')}>
+                    <div key={wine.id} className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-gray-100 bg-gray-50 hover:bg-cream transition-colors">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <CategoryBadge category={wine.category} />
@@ -291,50 +223,58 @@ export function NewOrderPage() {
                           <span className="text-xs text-gray-400">{wine.code}</span>
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
-                          <span className={clsx('font-medium', wine.stock === 0 ? 'text-red-500' : wine.stock <= 6 ? 'text-amber-600' : '')}>
-                            Stock: <strong>{wine.stock}</strong>
-                          </span>
-                          <span>Botella: {formatCurrency(wine.prices.bottle)}</span>
+                          <span>Stock: <strong>{wine.stock}</strong></span>
+                          <span>Bot: {formatCurrency(wine.prices.bottle)}</span>
                           <span>Caja: {formatCurrency(wine.prices.case)}</span>
                           <span>Mdo: {formatCurrency(wine.prices.market)}</span>
                         </div>
-                        {isWarned && (
-                          <p className="text-xs text-amber-700 font-medium mt-1">
-                            {wine.stock === 0
-                              ? 'Sin stock. Cliqueá de nuevo para agregar igual.'
-                              : `Stock insuficiente (necesitás ${bottlesNeeded}, hay ${wine.stock}). Cliqueá de nuevo para agregar igual.`}
-                          </p>
-                        )}
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                        {/* Quantity */}
                         <input
                           type="number"
                           min={1}
                           value={row.quantity}
-                          onChange={(e) => setRow(wine.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                          onChange={(e) => setRow(wine.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) }, wine)}
                           className="input w-16 text-center"
                         />
+                        {/* Unit */}
                         <select
                           value={row.unit}
-                          onChange={(e) => setRow(wine.id, { unit: e.target.value as OrderUnit })}
+                          onChange={(e) => setRow(wine.id, { unit: e.target.value as OrderUnit }, wine)}
                           className="input w-24 pr-1"
                         >
                           <option value="bottle">Botella</option>
                           <option value="case">Caja</option>
                         </select>
-                        <select
-                          value={isCase ? 'case' : row.priceType}
-                          onChange={(e) => setRow(wine.id, { priceType: e.target.value as PriceType })}
-                          className="input w-32 pr-1"
-                          disabled={isCase}
-                        >
-                          <option value="bottle">Botella Suelta</option>
-                          <option value="case">Caja Entera</option>
-                          <option value="market">Mercado/Rest.</option>
-                        </select>
-                        <div className="text-right min-w-[70px]">
-                          <div className="text-xs text-gray-400">por unidad</div>
-                          <div className="text-sm font-semibold text-gray-800">{formatCurrency(unitPrice)}</div>
+                        {/* Price channel buttons */}
+                        <div className="flex gap-1">
+                          {(['bottle', 'case', 'market'] as PriceChannel[]).map((ch) => (
+                            <button
+                              key={ch}
+                              onClick={() => setRow(wine.id, { priceType: ch }, wine)}
+                              disabled={row.unit === 'case' && ch !== 'case'}
+                              className={clsx(
+                                'px-2 py-1 rounded border text-xs font-medium transition-all',
+                                effectiveType === ch ? CHANNEL_ACTIVE[ch] : CHANNEL_COLORS[ch],
+                                row.unit === 'case' && ch !== 'case' ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                              )}
+                            >
+                              {CHANNEL_LABELS[ch]}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Custom price input */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={row.customPrice}
+                            onChange={(e) => setRow(wine.id, { customPrice: e.target.value }, wine)}
+                            className="input w-28 text-right"
+                            placeholder="Precio"
+                          />
                         </div>
                         <button onClick={() => addItem(wine.id)} className="btn-primary py-1.5">
                           <Plus size={14} />
@@ -349,21 +289,15 @@ export function NewOrderPage() {
           </div>
         </div>
 
-        {/* Right: order summary */}
+        {/* Right: summary */}
         <div className="w-[440px] flex-shrink-0 space-y-4">
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800">Resumen del Pedido</h2>
+              <h2 className="text-base font-semibold text-gray-800">Datos del Cliente</h2>
               <button onClick={() => { setContactModal(true); setContactSearch(''); }} className="btn-ghost text-xs gap-1.5 text-burgundy hover:text-burgundy-dark">
                 <Users size={14} />
                 Seleccionar contacto
               </button>
-            </div>
-
-            {/* Active price channel indicator */}
-            <div className={clsx('flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium', PRICE_CHANNEL_COLORS[defaultPriceType])}>
-              <Check size={13} />
-              Canal activo: <strong>{activePriceChannel.label}</strong> — {activePriceChannel.desc}
             </div>
 
             <div>
@@ -389,12 +323,12 @@ export function NewOrderPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <p className="label">Teléfono</p>
-                <input type="text" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} placeholder="+54 11..." className="input" />
+                <p className="label">CUIT</p>
+                <input type="text" value={client.cuit} onChange={(e) => setClient((c) => ({ ...c, cuit: e.target.value }))} placeholder="20-12345678-9" className="input" />
               </div>
               <div>
-                <p className="label">Email</p>
-                <input type="email" value={client.email} onChange={(e) => setClient((c) => ({ ...c, email: e.target.value }))} placeholder="mail@ejemplo.com" className="input" />
+                <p className="label">Teléfono</p>
+                <input type="text" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} placeholder="+54 11..." className="input" />
               </div>
             </div>
             <div>
@@ -403,31 +337,13 @@ export function NewOrderPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <p className="label">CUIT</p>
-                <input type="text" value={client.cuit} onChange={(e) => setClient((c) => ({ ...c, cuit: e.target.value }))} placeholder="20-12345678-9" className="input" />
-              </div>
-              <div>
-                <p className="label">Fecha de entrega</p>
-                <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="input" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
                 <p className="label">Forma de pago</p>
                 <input type="text" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Efectivo, transferencia..." className="input" />
-              </div>
-              <div>
-                <p className="label">Estado</p>
-                <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus)} className="input">
-                  <option value="draft">Borrador</option>
-                  <option value="confirmed">Confirmado</option>
-                  <option value="delivered">Entregado</option>
-                </select>
               </div>
             </div>
             <div>
               <p className="label">Notas</p>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones del pedido..." rows={2} className="input resize-none" />
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones..." rows={2} className="input resize-none" />
             </div>
           </div>
 
@@ -438,7 +354,7 @@ export function NewOrderPage() {
             </div>
             {items.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <ShoppingCart size={28} className="text-gray-300 mb-2" />
+                <Receipt size={28} className="text-gray-300 mb-2" />
                 <p className="text-sm text-gray-400">No hay productos agregados</p>
               </div>
             ) : (
@@ -448,7 +364,7 @@ export function NewOrderPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
                       <p className="text-xs text-gray-400">
-                        {item.quantity} {item.unit === 'bottle' ? 'bot.' : 'caja(s)'} · {PRICE_TYPE_SHORT[item.priceType]} · {formatCurrency(item.unitPrice)}
+                        {item.quantity} {item.unit === 'bottle' ? 'bot.' : 'caja(s)'} · {formatCurrency(item.unitPrice)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -491,14 +407,13 @@ export function NewOrderPage() {
             </div>
 
             <div className="flex gap-2 mt-4">
-              <button onClick={() => navigate('/pedidos')} className="btn-secondary flex-1">Cancelar</button>
-              <button onClick={handleSave} className="btn-primary flex-1">Guardar Pedido</button>
+              <button onClick={() => navigate('/liquidaciones')} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={handleSave} className="btn-primary flex-1">Guardar Liquidación</button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Contact selector modal */}
       <Modal open={contactModal} onClose={() => setContactModal(false)} title="Seleccionar Contacto" size="md">
         <div className="space-y-3">
           <div className="relative">
@@ -512,12 +427,9 @@ export function NewOrderPage() {
               autoFocus
             />
           </div>
-
           {filteredContacts.length === 0 ? (
             <div className="py-8 text-center text-sm text-gray-400">
-              {contacts.length === 0
-                ? 'No tenés contactos guardados aún. Agregá uno desde la sección Contactos.'
-                : 'Sin resultados para esa búsqueda.'}
+              {contacts.length === 0 ? 'No tenés contactos guardados aún.' : 'Sin resultados para esa búsqueda.'}
             </div>
           ) : (
             <div className="space-y-1.5 max-h-80 overflow-y-auto">
@@ -527,22 +439,11 @@ export function NewOrderPage() {
                   onClick={() => selectContact(contact)}
                   className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-100 hover:border-burgundy/40 hover:bg-cream transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-medium text-gray-900 text-sm">{contact.name}</span>
-                      {contact.company && <span className="ml-2 text-xs text-gray-400">{contact.company}</span>}
-                    </div>
-                    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border',
-                      contact.defaultPriceType === 'bottle' ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                      contact.defaultPriceType === 'case'   ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      'bg-purple-50 text-purple-700 border-purple-200'
-                    )}>
-                      {PRICE_TYPE_SHORT[contact.defaultPriceType]}
-                    </span>
-                  </div>
+                  <div className="font-medium text-gray-900 text-sm">{contact.name}</div>
+                  {contact.company && <div className="text-xs text-gray-400">{contact.company}</div>}
                   <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
+                    {contact.cuit && <span>CUIT: {contact.cuit}</span>}
                     {contact.phone && <span>{contact.phone}</span>}
-                    {contact.email && <span>{contact.email}</span>}
                   </div>
                 </button>
               ))}

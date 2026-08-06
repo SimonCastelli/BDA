@@ -32,6 +32,7 @@ export function PricesPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pdfModal, setPdfModal] = useState(false);
   const [pdfCategory, setPdfCategory] = useState<string | null>(null);
+  const [pdfPriceCol, setPdfPriceCol] = useState<'bottle' | 'case' | 'market' | null>(null);
 
   const filtered = wines
     .filter((w) => {
@@ -110,13 +111,13 @@ export function PricesPage() {
         {isEditing ? (
           <input
             ref={inputRef}
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={handleKeyDown}
             className="w-full px-1 py-0.5 text-sm bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400 text-right"
-            min={0}
           />
         ) : (
           <span className="flex items-center justify-end gap-1.5">
@@ -183,36 +184,59 @@ export function PricesPage() {
       </div>
 
       <Modal open={pdfModal} onClose={() => setPdfModal(false)} title="Exportar Lista de Precios (PDF)" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">Seleccioná la categoría a incluir en el PDF:</p>
+        <div className="space-y-5">
           <div className="space-y-2">
-            <button
-              onClick={() => setPdfCategory(null)}
-              className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
-                pdfCategory === null ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
-              )}
-            >
-              Todas las categorías
-            </button>
-            {categories.map((cat) => (
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Categoría</p>
+            <div className="space-y-1.5">
               <button
-                key={cat.id}
-                onClick={() => setPdfCategory(cat.id)}
+                onClick={() => setPdfCategory(null)}
                 className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
-                  pdfCategory === cat.id ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                  pdfCategory === null ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
                 )}
               >
-                {cat.label}
-                <span className="ml-2 text-xs opacity-60">
-                  ({wines.filter((w) => w.category === cat.id).length} vinos)
-                </span>
+                Todas las categorías
               </button>
-            ))}
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setPdfCategory(cat.id)}
+                  className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
+                    pdfCategory === cat.id ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                  )}
+                >
+                  {cat.label}
+                  <span className="ml-2 text-xs opacity-60">
+                    ({wines.filter((w) => w.category === cat.id).length} vinos)
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-2 justify-end pt-2">
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Canal de precio</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([null, 'bottle', 'case', 'market'] as const).map((col) => {
+                const label = col === null ? 'Todos los precios' : col === 'bottle' ? 'Botella Suelta' : col === 'case' ? 'Caja Entera' : 'Mercado / Rest.';
+                return (
+                  <button
+                    key={col ?? 'all'}
+                    onClick={() => setPdfPriceCol(col)}
+                    className={clsx('text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
+                      pdfPriceCol === col ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setPdfModal(false)} className="btn-secondary">Cancelar</button>
             <button
-              onClick={() => { generatePriceListPDF(wines, pdfCategory); setPdfModal(false); }}
+              onClick={() => { generatePriceListPDF(wines, pdfCategory, pdfPriceCol); setPdfModal(false); }}
               className="btn-primary"
             >
               <FileText size={15} />

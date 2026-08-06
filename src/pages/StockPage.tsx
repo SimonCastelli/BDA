@@ -89,15 +89,15 @@ function WineForm({ initial, onSubmit, onCancel, submitLabel }: WineFormProps) {
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="label">Botella Suelta *</label>
-            <input className="input" type="number" min="0" required value={form.priceBottle} onChange={set('priceBottle')} placeholder="3500" />
+            <input className="input" type="text" inputMode="decimal" required value={form.priceBottle} onChange={set('priceBottle')} placeholder="3500" />
           </div>
           <div>
             <label className="label">Caja Entera *</label>
-            <input className="input" type="number" min="0" required value={form.priceCase} onChange={set('priceCase')} placeholder="18000" />
+            <input className="input" type="text" inputMode="decimal" required value={form.priceCase} onChange={set('priceCase')} placeholder="18000" />
           </div>
           <div>
             <label className="label">Mercado / Rest.</label>
-            <input className="input" type="number" min="0" value={form.priceMarket} onChange={set('priceMarket')} placeholder="5200" />
+            <input className="input" type="text" inputMode="decimal" value={form.priceMarket} onChange={set('priceMarket')} placeholder="5200" />
           </div>
         </div>
       </div>
@@ -127,6 +127,10 @@ function wineToForm(wine: Wine): FormState {
   };
 }
 
+function parsePrice(v: string): number {
+  return parseFloat(v.replace(',', '.')) || 0;
+}
+
 function formToWineData(form: FormState): Omit<Wine, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     name: form.name.trim(), code: form.code.trim().toUpperCase(), category: form.category,
@@ -135,8 +139,9 @@ function formToWineData(form: FormState): Omit<Wine, 'id' | 'createdAt' | 'updat
     varietal: form.varietal.trim() || undefined,
     stock: Number(form.stock), bottlesPerCase: Number(form.bottlesPerCase),
     prices: {
-      bottle: Number(form.priceBottle), case: Number(form.priceCase),
-      market: Number(form.priceMarket) || 0,
+      bottle: parsePrice(form.priceBottle),
+      case: parsePrice(form.priceCase),
+      market: parsePrice(form.priceMarket),
     },
     notes: form.notes.trim() || undefined,
   };

@@ -10,11 +10,14 @@ import { OrderDetailPage } from './pages/OrderDetailPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { StockIntakePage } from './pages/StockIntakePage';
 import { ConfigPage } from './pages/ConfigPage';
+import { LiquidacionesPage } from './pages/LiquidacionesPage';
+import { NewLiquidacionPage } from './pages/NewLiquidacionPage';
 import { useWineStore } from './store/wineStore';
 import { useOrderStore } from './store/orderStore';
 import { useContactStore } from './store/contactStore';
 import { useReceptionStore } from './store/receptionStore';
 import { useCategoryStore } from './store/categoryStore';
+import { useLiquidacionStore } from './store/liquidacionStore';
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -24,9 +27,10 @@ export default function App() {
   const initContacts = useContactStore((s) => s.init);
   const initReceptions = useReceptionStore((s) => s.init);
   const initCategories = useCategoryStore((s) => s.init);
+  const initLiquidaciones = useLiquidacionStore((s) => s.init);
 
   useEffect(() => {
-    Promise.all([initWines(), initOrders(), initContacts(), initReceptions(), initCategories()])
+    Promise.all([initWines(), initOrders(), initContacts(), initReceptions(), initCategories(), initLiquidaciones()])
       .then(() => setReady(true))
       .catch(() => setError(true));
   }, []);
@@ -64,6 +68,8 @@ export default function App() {
         <Route path="/pedidos/:id" element={<OrderDetailPage />} />
         <Route path="/contactos" element={<ContactsPage />} />
         <Route path="/recepcion" element={<StockIntakePage />} />
+        <Route path="/liquidaciones" element={<LiquidacionesPage />} />
+        <Route path="/liquidaciones/nueva" element={<NewLiquidacionPage />} />
         <Route path="/configuracion" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -186,6 +186,22 @@ app.delete('/api/receptions/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Liquidaciones ─────────────────────────────────────────────────────────────
+
+app.get('/api/liquidaciones', (_req, res) => res.json(read('liquidaciones.json')));
+
+app.post('/api/liquidaciones', (req, res) => {
+  const list = read('liquidaciones.json');
+  list.unshift(req.body);
+  write('liquidaciones.json', list);
+  res.json(req.body);
+});
+
+app.delete('/api/liquidaciones/:id', (req, res) => {
+  write('liquidaciones.json', read('liquidaciones.json').filter((l) => l.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ── React app ─────────────────────────────────────────────────────────────────
 
 app.use(express.static(join(__dirname, 'dist')));
