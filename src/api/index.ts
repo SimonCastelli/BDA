@@ -56,6 +56,7 @@ export const api = {
   liquidaciones: {
     getAll: () => get<Liquidacion[]>('/liquidaciones'),
     create: (l: Liquidacion) => post<Liquidacion>('/liquidaciones', l),
+    update: (id: string, l: Liquidacion) => put<Liquidacion>(`/liquidaciones/${id}`, l),
     remove: (id: string) => del<{ ok: boolean }>(`/liquidaciones/${id}`),
   },
 };

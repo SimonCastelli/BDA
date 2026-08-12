@@ -1,0 +1,30 @@
+[
+  {
+    "name": "simon",
+    "company": "simonexpress",
+    "phone": "23456789",
+    "address": "simon 1789",
+    "email": "simon@gmail.com",
+    "cuit": "2046671662",
+    "defaultPriceType": "market",
+    "notes": "dsadasada",
+    "id": "ddncnjw0yms68a162",
+    "createdAt": "2026-07-29T15:16:57.578Z",
+    "updatedAt": "2026-07-29T15:24:56.829Z",
+    "serialNumber": 1
+  },
+  {
+    "name": "dfsg",
+    "company": "adfsgc",
+    "phone": "sdafgh",
+    "address": "gfhjk",
+    "email": "dfsgh",
+    "cuit": "dfsghj",
+    "defaultPriceType": "bottle",
+    "notes": "dasfg",
+    "id": "irh77r99ams68reoc",
+    "serialNumber": 2,
+    "createdAt": "2026-07-29T15:30:28.236Z",
+    "updatedAt": "2026-07-29T15:30:28.236Z"
+  }
+]

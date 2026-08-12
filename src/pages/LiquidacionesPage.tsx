@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Receipt, Trash2, FileText } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Receipt, Trash2, FileText, Pencil } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLiquidacionStore } from '../store/liquidacionStore';
 import { formatCurrency, formatDate } from '../utils/format';
@@ -10,6 +10,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 export function LiquidacionesPage() {
+  const navigate = useNavigate();
   const { liquidaciones, deleteLiquidacion } = useLiquidacionStore();
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -100,6 +101,13 @@ export function LiquidacionesPage() {
                           title="Descargar PDF"
                         >
                           <FileText size={15} />
+                        </button>
+                        <button
+                          onClick={() => navigate(`/liquidaciones/${liq.id}/editar`)}
+                          className="p-1.5 rounded hover:bg-gold/20 text-gray-400 hover:text-gold-dark transition-colors"
+                          title="Editar"
+                        >
+                          <Pencil size={15} />
                         </button>
                         <button
                           onClick={() => setDeleteId(liq.id)}

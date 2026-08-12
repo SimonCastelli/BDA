@@ -12,6 +12,7 @@ import { StockIntakePage } from './pages/StockIntakePage';
 import { ConfigPage } from './pages/ConfigPage';
 import { LiquidacionesPage } from './pages/LiquidacionesPage';
 import { NewLiquidacionPage } from './pages/NewLiquidacionPage';
+import { EditLiquidacionPage } from './pages/EditLiquidacionPage';
 import { useWineStore } from './store/wineStore';
 import { useOrderStore } from './store/orderStore';
 import { useContactStore } from './store/contactStore';
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/recepcion" element={<StockIntakePage />} />
         <Route path="/liquidaciones" element={<LiquidacionesPage />} />
         <Route path="/liquidaciones/nueva" element={<NewLiquidacionPage />} />
+        <Route path="/liquidaciones/:id/editar" element={<EditLiquidacionPage />} />
         <Route path="/configuracion" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

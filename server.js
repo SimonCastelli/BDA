@@ -197,6 +197,12 @@ app.post('/api/liquidaciones', (req, res) => {
   res.json(req.body);
 });
 
+app.put('/api/liquidaciones/:id', (req, res) => {
+  const list = read('liquidaciones.json').map((l) => (l.id === req.params.id ? req.body : l));
+  write('liquidaciones.json', list);
+  res.json(req.body);
+});
+
 app.delete('/api/liquidaciones/:id', (req, res) => {
   write('liquidaciones.json', read('liquidaciones.json').filter((l) => l.id !== req.params.id));
   res.json({ ok: true });

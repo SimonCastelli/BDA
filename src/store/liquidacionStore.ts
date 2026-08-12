@@ -8,6 +8,7 @@ interface LiquidacionStore {
   isLoading: boolean;
   init: () => Promise<void>;
   addLiquidacion: (data: Omit<Liquidacion, 'id' | 'liquidacionNumber' | 'createdAt'>) => Promise<Liquidacion>;
+  updateLiquidacion: (id: string, data: Omit<Liquidacion, 'id' | 'liquidacionNumber' | 'createdAt'>) => Promise<void>;
   deleteLiquidacion: (id: string) => Promise<void>;
   getNextNumber: () => string;
 }
@@ -40,6 +41,14 @@ export const useLiquidacionStore = create<LiquidacionStore>()((set, get) => ({
     await api.liquidaciones.create(liquidacion);
     set((s) => ({ liquidaciones: [liquidacion, ...s.liquidaciones] }));
     return liquidacion;
+  },
+
+  updateLiquidacion: async (id, data) => {
+    const existing = get().liquidaciones.find((l) => l.id === id);
+    if (!existing) return;
+    const updated: Liquidacion = { ...existing, ...data };
+    await api.liquidaciones.update(id, updated);
+    set((s) => ({ liquidaciones: s.liquidaciones.map((l) => (l.id === id ? updated : l)) }));
   },
 
   deleteLiquidacion: async (id) => {

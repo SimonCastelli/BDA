@@ -1,0 +1,58 @@
+[
+  {
+    "client": {
+      "name": "simon",
+      "company": "simonexpress",
+      "phone": "23456789",
+      "address": "simon 1789",
+      "email": "simon@gmail.com",
+      "cuit": "2046671662"
+    },
+    "items": [
+      {
+        "id": "7llemb99yms68qkfu",
+        "wineId": "w1",
+        "wineName": "Malbec Reserva",
+        "wineCode": "MAL-RES-21",
+        "quantity": 4,
+        "unit": "bottle",
+        "unitPrice": 3500,
+        "subtotal": 14000
+      }
+    ],
+    "subtotal": 14000,
+    "discount": 0,
+    "total": 14000,
+    "id": "7a6wg1prcms68qo9j",
+    "liquidacionNumber": "LIQ-0002",
+    "createdAt": "2026-07-29T15:29:54.007Z"
+  },
+  {
+    "client": {
+      "name": "simon",
+      "company": "simonexpress",
+      "phone": "23456789",
+      "address": "simon 1789",
+      "email": "simon@gmail.com",
+      "cuit": "2046671662"
+    },
+    "items": [
+      {
+        "id": "uybh7zg6qms68a9fx",
+        "wineId": "w1",
+        "wineName": "Malbec Reserva",
+        "wineCode": "MAL-RES-21",
+        "quantity": 6,
+        "unit": "bottle",
+        "unitPrice": 3500,
+        "subtotal": 21000
+      }
+    ],
+    "subtotal": 21000,
+    "discount": 0,
+    "total": 21000,
+    "id": "syzlqlwz7ms68adr6",
+    "liquidacionNumber": "LIQ-0001",
+    "createdAt": "2026-07-29T15:17:13.890Z"
+  }
+]

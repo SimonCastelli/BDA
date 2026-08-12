@@ -1,0 +1,485 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Plus, X, Receipt, Users, Search } from 'lucide-react';
+import { clsx } from 'clsx';
+import { useWineStore } from '../store/wineStore';
+import { useContactStore } from '../store/contactStore';
+import { useCategoryStore } from '../store/categoryStore';
+import { useLiquidacionStore } from '../store/liquidacionStore';
+import { Client, LiquidacionItem, OrderUnit, Contact } from '../types';
+import { formatCurrency, generateId } from '../utils/format';
+import { CategoryBadge } from '../components/ui/Badge';
+import { Modal } from '../components/ui/Modal';
+
+type PriceChannel = 'bottle' | 'case' | 'market';
+
+interface WineRowState {
+  quantity: number;
+  unit: OrderUnit;
+  priceType: PriceChannel;
+  customPrice: string;
+}
+
+const CHANNEL_LABELS: Record<PriceChannel, string> = {
+  bottle: 'Botella',
+  case: 'Caja',
+  market: 'Mercado',
+};
+
+const CHANNEL_COLORS: Record<PriceChannel, string> = {
+  bottle: 'bg-amber-50 text-amber-800 border-amber-300',
+  case:   'bg-blue-50 text-blue-700 border-blue-300',
+  market: 'bg-purple-50 text-purple-700 border-purple-300',
+};
+
+const CHANNEL_ACTIVE: Record<PriceChannel, string> = {
+  bottle: 'bg-amber-500 text-white border-amber-500',
+  case:   'bg-blue-600 text-white border-blue-600',
+  market: 'bg-purple-600 text-white border-purple-600',
+};
+
+function parsePrice(v: string): number {
+  return parseFloat(v.replace(',', '.')) || 0;
+}
+
+function getWinePrice(wine: { prices: { bottle: number; case: number; market: number } }, type: PriceChannel): number {
+  return type === 'case' ? wine.prices.case : type === 'market' ? wine.prices.market : wine.prices.bottle;
+}
+
+export function EditLiquidacionPage() {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const { wines } = useWineStore();
+  const { contacts } = useContactStore();
+  const { liquidaciones, updateLiquidacion } = useLiquidacionStore();
+  const getLabel = useCategoryStore((s) => s.getLabel);
+
+  const liq = liquidaciones.find((l) => l.id === id);
+
+  const [search, setSearch] = useState('');
+  const [wineRows, setWineRows] = useState<Record<string, WineRowState>>({});
+  const [items, setItems] = useState<LiquidacionItem[]>([]);
+  const [client, setClient] = useState<Client>({ name: '', company: '', phone: '', address: '', email: '', cuit: '' });
+  const [discount, setDiscount] = useState(0);
+  const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [errors, setErrors] = useState<{ client?: string; items?: string }>({});
+  const [contactModal, setContactModal] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+
+  // Pre-populate from existing liquidacion
+  useEffect(() => {
+    if (!liq) return;
+    setClient({
+      name: liq.client.name,
+      company: liq.client.company ?? '',
+      phone: liq.client.phone ?? '',
+      address: liq.client.address ?? '',
+      email: liq.client.email ?? '',
+      cuit: liq.client.cuit ?? '',
+    });
+    setItems(liq.items);
+    setDiscount(liq.discount);
+    setNotes(liq.notes ?? '');
+    setPaymentMethod(liq.paymentMethod ?? '');
+  }, [liq]);
+
+  if (!liq) {
+    return (
+      <div className="p-6">
+        <p className="text-gray-500">Liquidación no encontrada.</p>
+        <button onClick={() => navigate('/liquidaciones')} className="btn-ghost mt-4">
+          <ArrowLeft size={16} /> Volver
+        </button>
+      </div>
+    );
+  }
+
+  const filteredWines = wines.filter((w) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      w.name.toLowerCase().includes(q) ||
+      w.code.toLowerCase().includes(q) ||
+      (w.varietal ?? '').toLowerCase().includes(q) ||
+      (w.winery ?? '').toLowerCase().includes(q) ||
+      getLabel(w.category).toLowerCase().includes(q)
+    );
+  });
+
+  const filteredContacts = contacts.filter((c) => {
+    if (!contactSearch) return true;
+    const q = contactSearch.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.company ?? '').toLowerCase().includes(q) ||
+      (c.phone ?? '').includes(q)
+    );
+  });
+
+  function getRow(wineId: string, defaultPrice: number): WineRowState {
+    return wineRows[wineId] ?? { quantity: 1, unit: 'bottle', priceType: 'bottle', customPrice: String(defaultPrice) };
+  }
+
+  function setRow(wineId: string, patch: Partial<WineRowState>, wine: { prices: { bottle: number; case: number; market: number } }) {
+    setWineRows((prev) => {
+      const current = prev[wineId] ?? { quantity: 1, unit: 'bottle', priceType: 'bottle', customPrice: String(wine.prices.bottle) };
+      const next = { ...current, ...patch };
+      if ((patch.priceType || patch.unit) && !patch.customPrice) {
+        const effectiveType: PriceChannel = next.unit === 'case' ? 'case' : next.priceType;
+        next.customPrice = String(getWinePrice(wine, effectiveType));
+        if (patch.unit === 'case') next.priceType = 'case';
+        if (patch.unit === 'bottle' && current.unit === 'case') next.priceType = 'bottle';
+      }
+      return { ...prev, [wineId]: next };
+    });
+  }
+
+  function selectContact(contact: Contact) {
+    setClient({
+      name: contact.name,
+      company: contact.company ?? '',
+      phone: contact.phone ?? '',
+      address: contact.address ?? '',
+      email: contact.email ?? '',
+      cuit: contact.cuit ?? '',
+    });
+    setContactModal(false);
+    setContactSearch('');
+  }
+
+  function addItem(wineId: string) {
+    const wine = wines.find((w) => w.id === wineId);
+    if (!wine) return;
+    const row = getRow(wineId, wine.prices.bottle);
+    const { quantity, unit } = row;
+    const unitPrice = parsePrice(row.customPrice);
+    if (quantity <= 0 || unitPrice < 0) return;
+    const subtotal = quantity * unitPrice;
+
+    setItems((prev) => {
+      const existing = prev.findIndex((i) => i.wineId === wineId && i.unit === unit && i.unitPrice === unitPrice);
+      if (existing >= 0) {
+        return prev.map((item, idx) =>
+          idx === existing
+            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * item.unitPrice }
+            : item
+        );
+      }
+      return [...prev, { id: generateId(), wineId: wine.id, wineName: wine.name, wineCode: wine.code, quantity, unit, unitPrice, subtotal }];
+    });
+  }
+
+  function removeItem(itemId: string) {
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+  }
+
+  const subtotal = items.reduce((sum, i) => sum + i.subtotal, 0);
+  const discountAmount = subtotal * (discount / 100);
+  const total = subtotal - discountAmount;
+
+  async function handleSave() {
+    if (!liq) return;
+    const newErrors: typeof errors = {};
+    if (!client.name.trim()) newErrors.client = 'El nombre del cliente es requerido.';
+    if (items.length === 0) newErrors.items = 'Agregá al menos un producto.';
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
+    setErrors({});
+
+    const cleanClient: Client = {
+      name: client.name.trim(),
+      ...(client.company?.trim() ? { company: client.company.trim() } : {}),
+      ...(client.phone?.trim() ? { phone: client.phone.trim() } : {}),
+      ...(client.address?.trim() ? { address: client.address.trim() } : {}),
+      ...(client.email?.trim() ? { email: client.email.trim() } : {}),
+      ...(client.cuit?.trim() ? { cuit: client.cuit.trim() } : {}),
+    };
+
+    await updateLiquidacion(liq.id, {
+      client: cleanClient,
+      items,
+      subtotal,
+      discount,
+      total,
+      ...(paymentMethod.trim() ? { paymentMethod: paymentMethod.trim() } : {}),
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+    });
+
+    navigate('/liquidaciones');
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => navigate('/liquidaciones')} className="btn-ghost">
+          <ArrowLeft size={16} />
+          Volver
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Editar Liquidación</h1>
+          <p className="text-sm text-gray-400 font-mono">{liq.liquidacionNumber}</p>
+        </div>
+      </div>
+
+      <div className="flex gap-6 items-start">
+        {/* Left: wine selection */}
+        <div className="flex-1 min-w-0 space-y-4">
+          <div className="card p-4 space-y-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-800">Agregar Vinos</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Seleccioná el canal de precio por vino. Podés editarlo manualmente. No afecta el stock.</p>
+            </div>
+
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar vino por nombre, código, varietal, categoría..."
+              className="input"
+            />
+            {errors.items && <p className="text-xs text-red-500">{errors.items}</p>}
+
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              {filteredWines.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">Sin resultados</p>
+              ) : (
+                filteredWines.map((wine) => {
+                  const row = getRow(wine.id, wine.prices.bottle);
+                  const effectiveType: PriceChannel = row.unit === 'case' ? 'case' : row.priceType;
+
+                  return (
+                    <div key={wine.id} className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-gray-100 bg-gray-50 hover:bg-cream transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <CategoryBadge category={wine.category} />
+                          <span className="font-medium text-sm text-gray-900 truncate">{wine.name}</span>
+                          <span className="text-xs text-gray-400">{wine.code}</span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                          <span>Stock: <strong>{wine.stock}</strong></span>
+                          <span>Bot: {formatCurrency(wine.prices.bottle)}</span>
+                          <span>Caja: {formatCurrency(wine.prices.case)}</span>
+                          <span>Mdo: {formatCurrency(wine.prices.market)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                        <input
+                          type="number"
+                          min={1}
+                          value={row.quantity}
+                          onChange={(e) => setRow(wine.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) }, wine)}
+                          className="input w-16 text-center"
+                        />
+                        <select
+                          value={row.unit}
+                          onChange={(e) => setRow(wine.id, { unit: e.target.value as OrderUnit }, wine)}
+                          className="input w-24 pr-1"
+                        >
+                          <option value="bottle">Botella</option>
+                          <option value="case">Caja</option>
+                        </select>
+                        <div className="flex gap-1">
+                          {(['bottle', 'case', 'market'] as PriceChannel[]).map((ch) => (
+                            <button
+                              key={ch}
+                              onClick={() => setRow(wine.id, { priceType: ch }, wine)}
+                              disabled={row.unit === 'case' && ch !== 'case'}
+                              className={clsx(
+                                'px-2 py-1 rounded border text-xs font-medium transition-all',
+                                effectiveType === ch ? CHANNEL_ACTIVE[ch] : CHANNEL_COLORS[ch],
+                                row.unit === 'case' && ch !== 'case' ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                              )}
+                            >
+                              {CHANNEL_LABELS[ch]}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={row.customPrice}
+                            onChange={(e) => setRow(wine.id, { customPrice: e.target.value }, wine)}
+                            className="input w-28 text-right"
+                            placeholder="Precio"
+                          />
+                        </div>
+                        <button onClick={() => addItem(wine.id)} className="btn-primary py-1.5">
+                          <Plus size={14} />
+                          Agregar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: summary */}
+        <div className="w-[440px] flex-shrink-0 space-y-4">
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800">Datos del Cliente</h2>
+              <button onClick={() => { setContactModal(true); setContactSearch(''); }} className="btn-ghost text-xs gap-1.5 text-burgundy hover:text-burgundy-dark">
+                <Users size={14} />
+                Seleccionar contacto
+              </button>
+            </div>
+
+            <div>
+              <p className="label">Nombre del cliente *</p>
+              {errors.client && <p className="text-xs text-red-500 mb-1">{errors.client}</p>}
+              <input
+                type="text"
+                value={client.name}
+                onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
+                placeholder="Nombre del cliente"
+                className={clsx('input', errors.client && 'border-red-400 focus:border-red-400 focus:ring-red-200')}
+              />
+            </div>
+            <div>
+              <p className="label">Nombre del negocio</p>
+              <input
+                type="text"
+                value={client.company}
+                onChange={(e) => setClient((c) => ({ ...c, company: e.target.value }))}
+                placeholder="Restaurante / comercio..."
+                className="input"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="label">CUIT</p>
+                <input type="text" value={client.cuit} onChange={(e) => setClient((c) => ({ ...c, cuit: e.target.value }))} placeholder="20-12345678-9" className="input" />
+              </div>
+              <div>
+                <p className="label">Teléfono</p>
+                <input type="text" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} placeholder="+54 11..." className="input" />
+              </div>
+            </div>
+            <div>
+              <p className="label">Dirección</p>
+              <input type="text" value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder="Calle 123, Ciudad" className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="label">Forma de pago</p>
+                <input type="text" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Efectivo, transferencia..." className="input" />
+              </div>
+            </div>
+            <div>
+              <p className="label">Notas</p>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones..." rows={2} className="input resize-none" />
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
+              {items.length > 0 && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Receipt size={28} className="text-gray-300 mb-2" />
+                <p className="text-sm text-gray-400">No hay productos agregados</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
+                      <p className="text-xs text-gray-400">
+                        {item.quantity} {item.unit === 'bottle' ? 'bot.' : 'caja(s)'} · {formatCurrency(item.unitPrice)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-sm font-semibold text-gray-700">{formatCurrency(item.subtotal)}</span>
+                      <button onClick={() => removeItem(item.id)} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-medium">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Descuento</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={discount}
+                      onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                      className="input w-14 text-center py-0.5 text-xs"
+                    />
+                    <span className="text-gray-400 text-xs">%</span>
+                  </div>
+                </div>
+                {discount > 0 && <span className="text-green-600 font-medium">-{formatCurrency(discountAmount)}</span>}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="font-bold text-gray-900">TOTAL</span>
+                <span className="text-xl font-bold text-burgundy">{formatCurrency(total)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => navigate('/liquidaciones')} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={handleSave} className="btn-primary flex-1">Guardar Cambios</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Modal open={contactModal} onClose={() => setContactModal(false)} title="Seleccionar Contacto" size="md">
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={contactSearch}
+              onChange={(e) => setContactSearch(e.target.value)}
+              placeholder="Buscar por nombre, empresa o teléfono..."
+              className="input pl-9"
+              autoFocus
+            />
+          </div>
+          {filteredContacts.length === 0 ? (
+            <div className="py-8 text-center text-sm text-gray-400">
+              {contacts.length === 0 ? 'No tenés contactos guardados aún.' : 'Sin resultados para esa búsqueda.'}
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-80 overflow-y-auto">
+              {filteredContacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  onClick={() => selectContact(contact)}
+                  className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-100 hover:border-burgundy/40 hover:bg-cream transition-all"
+                >
+                  <div className="font-medium text-gray-900 text-sm">{contact.name}</div>
+                  {contact.company && <div className="text-xs text-gray-400">{contact.company}</div>}
+                  <div className="flex gap-3 mt-0.5 text-xs text-gray-400">
+                    {contact.cuit && <span>CUIT: {contact.cuit}</span>}
+                    {contact.phone && <span>{contact.phone}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}
