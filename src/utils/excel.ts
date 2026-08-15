@@ -75,7 +75,8 @@ export function importWinesFromExcel(file: File): Promise<ImportResult> {
         rows.forEach((row, i) => {
           const rowNum = i + 2;
           const name = String(row['Nombre'] ?? '').trim();
-          const code = String(row['Código de Barras'] ?? '').trim().toUpperCase();
+          // Accept both export format ('Código') and template format ('Código de Barras')
+          const code = String(row['Código de Barras'] ?? row['Código'] ?? '').trim().toUpperCase();
           const catLabel = String(row['Categoría'] ?? '').trim().toLowerCase();
 
           if (!name) { errors.push(`Fila ${rowNum}: falta el Nombre`); return; }
@@ -96,11 +97,13 @@ export function importWinesFromExcel(file: File): Promise<ImportResult> {
             region: String(row['Región'] ?? '').trim() || undefined,
             vintage: row['Cosecha'] ? Number(row['Cosecha']) : undefined,
             stock: Number(row['Stock (botellas)']) || 0,
-            bottlesPerCase: Number(row['Botellas por Caja']) || 6,
+            // Accept both 'Botellas por Caja' (template) and 'Botellas/Caja' (export)
+            bottlesPerCase: Number(row['Botellas por Caja'] ?? row['Botellas/Caja']) || 6,
             prices: {
-              bottle: Number(row['Precio Botella']) || 0,
-              case: Number(row['Precio Caja']) || 0,
-              market: Number(row['Precio Mercado']) || 0,
+              // Accept both 'Precio Botella' (template) and 'P. Botella' (export)
+              bottle: Number(row['Precio Botella'] ?? row['P. Botella']) || 0,
+              case: Number(row['Precio Caja'] ?? row['P. Caja']) || 0,
+              market: Number(row['Precio Mercado'] ?? row['P. Mercado']) || 0,
             },
             notes: String(row['Notas'] ?? '').trim() || undefined,
           });
