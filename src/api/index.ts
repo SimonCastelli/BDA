@@ -53,6 +53,10 @@ export const api = {
     update: (id: string, c: Category) => put<Category>(`/categories/${id}`, c),
     remove: (id: string) => del<{ ok: boolean }>(`/categories/${id}`),
   },
+  backup: {
+    export: () => get<Record<string, unknown>>('/backup'),
+    restore: (data: Record<string, unknown>) => post<{ ok: boolean }>('/restore', data),
+  },
   liquidaciones: {
     getAll: () => get<Liquidacion[]>('/liquidaciones'),
     create: (l: Liquidacion) => post<Liquidacion>('/liquidaciones', l),

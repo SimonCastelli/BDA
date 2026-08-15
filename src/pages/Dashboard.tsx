@@ -1,10 +1,12 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, ClipboardList, TrendingDown, DollarSign, Plus, ArrowRight, Grape, Wine } from 'lucide-react';
+import { Package, ClipboardList, TrendingDown, DollarSign, Plus, ArrowRight, Grape, Wine, Download, Upload } from 'lucide-react';
 import { useWineStore } from '../store/wineStore';
 import { useOrderStore } from '../store/orderStore';
 import { useCategoryStore } from '../store/categoryStore';
 import { formatCurrency, formatDate } from '../utils/format';
 import { CategoryBadge, StatusBadge } from '../components/ui/Badge';
+import { api } from '../api';
 
 const TODAY = new Date().toLocaleDateString('es-AR', {
   weekday: 'long',
@@ -17,6 +19,28 @@ export function Dashboard() {
   const wines = useWineStore((s) => s.wines);
   const orders = useOrderStore((s) => s.orders);
   const { categories } = useCategoryStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleExport() {
+    const data = await api.backup.export();
+    const date = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bda-backup-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const data = JSON.parse(text);
+    await api.backup.restore(data);
+    window.location.reload();
+  }
 
   const totalBottles = wines.reduce((acc, w) => acc + w.stock, 0);
   const criticalWines = wines.filter((w) => w.stock <= 6);
@@ -40,10 +64,21 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5 capitalize">{TODAY}</p>
         </div>
-        <Link to="/pedidos/nuevo" className="btn-primary">
-          <Plus size={16} />
-          Nuevo Pedido
-        </Link>
+        <div className="flex items-center gap-2">
+          <button onClick={handleExport} className="btn-secondary flex items-center gap-1.5 text-sm" title="Descargar backup JSON">
+            <Download size={15} />
+            Exportar backup
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} className="btn-secondary flex items-center gap-1.5 text-sm" title="Restaurar desde backup JSON">
+            <Upload size={15} />
+            Restaurar backup
+          </button>
+          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+          <Link to="/pedidos/nuevo" className="btn-primary">
+            <Plus size={16} />
+            Nuevo Pedido
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

@@ -1,5 +1,5 @@
 import express from 'express';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -9,6 +9,31 @@ app.use(express.json());
 
 const DATA_DIR = join(__dirname, 'data');
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR);
+
+const BACKUP_DIR = join(__dirname, 'backups');
+if (!existsSync(BACKUP_DIR)) mkdirSync(BACKUP_DIR);
+
+const BACKUP_FILES = ['wines', 'orders', 'contacts', 'receptions', 'categories', 'liquidaciones'];
+const MAX_BACKUPS = 7;
+
+function createDailyBackup() {
+  const date = new Date().toISOString().slice(0, 10);
+  const backupPath = join(BACKUP_DIR, `bda-backup-${date}.json`);
+  if (existsSync(backupPath)) return;
+  const backup = { version: 1, exportedAt: new Date().toISOString() };
+  for (const name of BACKUP_FILES) backup[name] = read(`${name}.json`);
+  writeFileSync(backupPath, JSON.stringify(backup, null, 2));
+  console.log(`Backup automático creado: bda-backup-${date}.json`);
+  // Rotar: mantener solo los últimos MAX_BACKUPS
+  const all = readdirSync(BACKUP_DIR).filter(f => f.startsWith('bda-backup-')).sort();
+  while (all.length > MAX_BACKUPS) {
+    unlinkSync(join(BACKUP_DIR, all.shift()));
+  }
+}
+
+// Backup al iniciar y luego cada 24 horas
+setImmediate(createDailyBackup);
+setInterval(createDailyBackup, 24 * 60 * 60 * 1000);
 
 function read(file) {
   const p = join(DATA_DIR, file);
@@ -205,6 +230,22 @@ app.put('/api/liquidaciones/:id', (req, res) => {
 
 app.delete('/api/liquidaciones/:id', (req, res) => {
   write('liquidaciones.json', read('liquidaciones.json').filter((l) => l.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+
+app.get('/api/backup', (_req, res) => {
+  const backup = {};
+  for (const name of BACKUP_FILES) backup[name] = read(`${name}.json`);
+  res.json({ version: 1, exportedAt: new Date().toISOString(), ...backup });
+});
+
+app.post('/api/restore', (req, res) => {
+  const { version, exportedAt, ...data } = req.body;
+  for (const name of BACKUP_FILES) {
+    if (Array.isArray(data[name])) write(`${name}.json`, data[name]);
+  }
   res.json({ ok: true });
 });
 
