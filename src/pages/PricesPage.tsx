@@ -33,6 +33,8 @@ export function PricesPage() {
   const [pdfModal, setPdfModal] = useState(false);
   const [pdfCategory, setPdfCategory] = useState<string | null>(null);
   const [pdfPriceCol, setPdfPriceCol] = useState<'bottle' | 'case' | 'market' | null>(null);
+  const [pdfWinery, setPdfWinery] = useState<string | null>(null);
+  const [pdfShowNoStock, setPdfShowNoStock] = useState(true);
 
   const filtered = wines
     .filter((w) => {
@@ -213,6 +215,40 @@ export function PricesPage() {
             </div>
           </div>
 
+          {(() => {
+            const wineries = Array.from(new Set(wines.map((w) => w.winery).filter(Boolean))) as string[];
+            if (wineries.length === 0) return null;
+            return (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bodega</p>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  <button
+                    onClick={() => setPdfWinery(null)}
+                    className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
+                      pdfWinery === null ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    Todas las bodegas
+                  </button>
+                  {wineries.sort().map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setPdfWinery(w)}
+                      className={clsx('w-full text-left px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
+                        pdfWinery === w ? 'bg-burgundy text-white border-burgundy' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                      )}
+                    >
+                      {w}
+                      <span className="ml-2 text-xs opacity-60">
+                        ({wines.filter((wine) => wine.winery === w).length} vinos)
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Canal de precio</p>
             <div className="grid grid-cols-2 gap-1.5">
@@ -233,15 +269,26 @@ export function PricesPage() {
             </div>
           </div>
 
-          <div className="flex gap-2 justify-end pt-1">
-            <button onClick={() => setPdfModal(false)} className="btn-secondary">Cancelar</button>
-            <button
-              onClick={() => { generatePriceListPDF(wines, pdfCategory, pdfPriceCol); setPdfModal(false); }}
-              className="btn-primary"
-            >
-              <FileText size={15} />
-              Descargar PDF
-            </button>
+          <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={pdfShowNoStock}
+                onChange={(e) => setPdfShowNoStock(e.target.checked)}
+                className="w-4 h-4 accent-burgundy"
+              />
+              <span className="text-sm text-gray-700">Incluir vinos sin stock</span>
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setPdfModal(false)} className="btn-secondary">Cancelar</button>
+              <button
+                onClick={() => { generatePriceListPDF(wines, pdfCategory, pdfPriceCol, pdfWinery, pdfShowNoStock); setPdfModal(false); }}
+                className="btn-primary"
+              >
+                <FileText size={15} />
+                Descargar PDF
+              </button>
+            </div>
           </div>
         </div>
       </Modal>

@@ -89,3 +89,14 @@ También podés exportar un backup manual desde el Dashboard en cualquier moment
   - `Precio Caja` y `P. Caja` → ambos válidos
   - `Precio Mercado` y `P. Mercado` → ambos válidos
   - `Botellas por Caja` y `Botellas/Caja` → ambos válidos
+
+### v1.5 — Pedidos editables
+- Los pedidos en estado Borrador o Confirmado ahora tienen un botón **Editar** en el detalle
+- Se puede editar todo: cliente, canal de precio, productos (agregar, quitar, cambiar cantidad), descuento, notas, forma de pago, fecha de entrega y estado
+- Los pedidos entregados no son editables (el stock ya fue descontado)
+- El stock se sigue descontando únicamente al marcar como entregado, igual que antes
+
+### v1.6 — Mejoras en PDFs y lista de precios
+- Encabezados de todos los PDFs (remitos, lista de precios, liquidaciones) ahora en color bordo
+- Lista de precios PDF: nuevo filtro por bodega (además del filtro por categoría)
+- Lista de precios PDF: opción para incluir o excluir vinos sin stock al generar el PDF

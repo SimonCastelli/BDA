@@ -7,6 +7,7 @@ import { PricesPage } from './pages/PricesPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { NewOrderPage } from './pages/NewOrderPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
+import { EditOrderPage } from './pages/EditOrderPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { StockIntakePage } from './pages/StockIntakePage';
 import { ConfigPage } from './pages/ConfigPage';
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/pedidos" element={<OrdersPage />} />
         <Route path="/pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="/pedidos/:id" element={<OrderDetailPage />} />
+        <Route path="/pedidos/:id/editar" element={<EditOrderPage />} />
         <Route path="/contactos" element={<ContactsPage />} />
         <Route path="/recepcion" element={<StockIntakePage />} />
         <Route path="/liquidaciones" element={<LiquidacionesPage />} />

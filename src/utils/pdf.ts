@@ -36,7 +36,7 @@ function drawHeader(
   statusColor?: [number, number, number],
 ): void {
   const headerH = 30;
-  doc.setFillColor(27, 14, 56);
+  doc.setFillColor(114, 47, 55);
   doc.rect(0, 0, pageW, headerH, 'F');
 
   // Logo (320×129 → 55×22 mm), vertically centered
@@ -74,15 +74,20 @@ export function generatePriceListPDF(
   wines: Wine[],
   categoryFilter: string | null = null,
   priceColumn: PriceColumn | null = null,
+  wineryFilter: string | null = null,
+  showNoStock: boolean = true,
 ): void {
   const getLabel = useCategoryStore.getState().getLabel;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
 
-  const filtered = categoryFilter ? wines.filter((w) => w.category === categoryFilter) : wines;
+  const filtered = wines
+    .filter((w) => !categoryFilter || w.category === categoryFilter)
+    .filter((w) => !wineryFilter || (w.winery ?? '') === wineryFilter)
+    .filter((w) => showNoStock || w.stock > 0);
 
   // Header (34mm)
-  doc.setFillColor(27, 14, 56);
+  doc.setFillColor(114, 47, 55);
   doc.rect(0, 0, pageW, 34, 'F');
 
   addLogo(doc, 10, 5, 55, 22);
@@ -148,7 +153,7 @@ export function generatePriceListPDF(
 
   const tableOptions = {
     theme: 'striped' as const,
-    headStyles: { fillColor: [27, 14, 56] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontSize: 8, fontStyle: 'bold' as const },
+    headStyles: { fillColor: [114, 47, 55] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontSize: 8, fontStyle: 'bold' as const },
     bodyStyles: { fontSize: 7.5, textColor: [45, 45, 45] as [number, number, number], cellPadding: 1.8 },
     alternateRowStyles: { fillColor: [250, 246, 240] as [number, number, number] },
     columnStyles: buildColumnStyles(),
@@ -204,9 +209,10 @@ export function generatePriceListPDF(
   }
 
   const catSuffix = categoryFilter ? `_${categoryFilter}` : '_todas';
+  const winerySuffix = wineryFilter ? `_${wineryFilter.replace(/\s+/g, '_')}` : '';
   const priceSuffix = priceColumn ? `_${priceColumn}` : '';
   const date = new Date().toISOString().slice(0, 10);
-  doc.save(`BDA_ListaPrecios${catSuffix}${priceSuffix}_${date}.pdf`);
+  doc.save(`BDA_ListaPrecios${catSuffix}${winerySuffix}${priceSuffix}_${date}.pdf`);
 }
 
 export function generateRemitoPDF(order: Order): void {
@@ -242,7 +248,7 @@ export function generateRemitoPDF(order: Order): void {
   doc.setDrawColor(196, 163, 90);
   doc.roundedRect(10, boxTop, 90, boxH, 3, 3, 'S');
 
-  doc.setTextColor(27, 14, 56);
+  doc.setTextColor(114, 47, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text('DATOS DEL CLIENTE', 15, boxTop + 6);
@@ -261,7 +267,7 @@ export function generateRemitoPDF(order: Order): void {
   }
   if (order.client.cuit) {
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(27, 14, 56);
+    doc.setTextColor(114, 47, 55);
     doc.text(`CUIT: ${order.client.cuit}`, 15, cy);
     doc.setTextColor(45, 45, 45);
     doc.setFont('helvetica', 'normal');
@@ -273,7 +279,7 @@ export function generateRemitoPDF(order: Order): void {
   doc.setDrawColor(196, 163, 90);
   doc.roundedRect(110, boxTop, 90, boxH, 3, 3, 'S');
 
-  doc.setTextColor(27, 14, 56);
+  doc.setTextColor(114, 47, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text('DETALLES DEL PEDIDO', 115, boxTop + 6);
@@ -342,7 +348,7 @@ export function generateRemitoPDF(order: Order): void {
   }
 
   ty += 8;
-  doc.setFillColor(27, 14, 56);
+  doc.setFillColor(114, 47, 55);
   doc.roundedRect(totalsX - 5, ty - 5, 75, 11, 2, 2, 'F');
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -403,7 +409,7 @@ export function generateLiquidacionPDF(liq: Liquidacion): void {
   doc.setDrawColor(196, 163, 90);
   doc.roundedRect(10, boxTop, 90, boxH, 3, 3, 'S');
 
-  doc.setTextColor(27, 14, 56);
+  doc.setTextColor(114, 47, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text('DATOS DEL CLIENTE', 15, boxTop + 6);
@@ -422,7 +428,7 @@ export function generateLiquidacionPDF(liq: Liquidacion): void {
   }
   if (liq.client.cuit) {
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(27, 14, 56);
+    doc.setTextColor(114, 47, 55);
     doc.text(`CUIT: ${liq.client.cuit}`, 15, cy);
     doc.setTextColor(45, 45, 45);
     doc.setFont('helvetica', 'normal');
@@ -438,7 +444,7 @@ export function generateLiquidacionPDF(liq: Liquidacion): void {
   doc.setDrawColor(196, 163, 90);
   doc.roundedRect(110, boxTop, 90, boxH, 3, 3, 'S');
 
-  doc.setTextColor(27, 14, 56);
+  doc.setTextColor(114, 47, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text('DETALLES', 115, boxTop + 6);
@@ -504,7 +510,7 @@ export function generateLiquidacionPDF(liq: Liquidacion): void {
   }
 
   ty += 8;
-  doc.setFillColor(27, 14, 56);
+  doc.setFillColor(114, 47, 55);
   doc.roundedRect(totalsX - 5, ty - 5, 75, 11, 2, 2, 'F');
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');

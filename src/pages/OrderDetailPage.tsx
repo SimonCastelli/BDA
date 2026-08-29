@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileDown, Trash2, CheckCircle, Truck, XCircle, Package } from 'lucide-react';
+import { ArrowLeft, FileDown, Trash2, CheckCircle, Truck, XCircle, Package, Pencil } from 'lucide-react';
 import { useOrderStore } from '../store/orderStore';
 import { useWineStore } from '../store/wineStore';
 import { OrderStatus, PRICE_TYPE_LABELS, STATUS_LABELS } from '../types';
@@ -84,6 +84,12 @@ export function OrderDetailPage() {
             <FileDown size={16} />
             Descargar Remito (PDF)
           </button>
+          {order.status !== 'delivered' && (
+            <button onClick={() => navigate(`/pedidos/${order.id}/editar`)} className="btn-secondary">
+              <Pencil size={15} />
+              Editar
+            </button>
+          )}
           {statusActions.map((action) => (
             <button
               key={action.status}
