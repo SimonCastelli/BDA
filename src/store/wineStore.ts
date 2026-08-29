@@ -31,31 +31,48 @@ export const useWineStore = create<WineStore>()((set, get) => ({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await api.wines.create(wine);
     set((s) => ({ wines: [...s.wines, wine] }));
+    api.wines.create(wine).catch(() => {
+      set((s) => ({ wines: s.wines.filter((w) => w.id !== wine.id) }));
+    });
     return wine;
   },
 
   updateWine: async (id, updates) => {
-    const wine = get().wines.find((w) => w.id === id);
-    if (!wine) return;
-    const updated = { ...wine, ...updates, updatedAt: new Date().toISOString() };
-    await api.wines.update(id, updated);
+    const prev = get().wines.find((w) => w.id === id);
+    if (!prev) return;
+    const updated = { ...prev, ...updates, updatedAt: new Date().toISOString() };
     set((s) => ({ wines: s.wines.map((w) => (w.id === id ? updated : w)) }));
+    api.wines.update(id, updated).catch(() => {
+      set((s) => ({ wines: s.wines.map((w) => (w.id === id ? prev : w)) }));
+    });
   },
 
   deleteWine: async (id) => {
-    await api.wines.remove(id);
+    const prev = get().wines.find((w) => w.id === id);
     set((s) => ({ wines: s.wines.filter((w) => w.id !== id) }));
+    api.wines.remove(id).catch(() => {
+      if (prev) set((s) => ({ wines: [...s.wines, prev] }));
+    });
   },
 
   updatePrices: async (id, prices) => {
-    const updated = await api.wines.patchPrices(id, prices);
+    const prev = get().wines.find((w) => w.id === id);
+    if (!prev) return;
+    const updated = { ...prev, prices, updatedAt: new Date().toISOString() };
     set((s) => ({ wines: s.wines.map((w) => (w.id === id ? updated : w)) }));
+    api.wines.patchPrices(id, prices).catch(() => {
+      set((s) => ({ wines: s.wines.map((w) => (w.id === id ? prev : w)) }));
+    });
   },
 
   updateStock: async (id, delta) => {
-    const updated = await api.wines.patchStock(id, delta);
+    const prev = get().wines.find((w) => w.id === id);
+    if (!prev) return;
+    const updated = { ...prev, stock: Math.max(0, prev.stock + delta), updatedAt: new Date().toISOString() };
     set((s) => ({ wines: s.wines.map((w) => (w.id === id ? updated : w)) }));
+    api.wines.patchStock(id, delta).catch(() => {
+      set((s) => ({ wines: s.wines.map((w) => (w.id === id ? prev : w)) }));
+    });
   },
 }));

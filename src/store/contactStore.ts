@@ -50,21 +50,28 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await api.contacts.create(contact);
     set((s) => ({ contacts: [...s.contacts, contact] }));
+    api.contacts.create(contact).catch(() => {
+      set((s) => ({ contacts: s.contacts.filter((c) => c.id !== contact.id) }));
+    });
     return contact;
   },
 
   updateContact: async (id, data) => {
-    const contact = get().contacts.find((c) => c.id === id);
-    if (!contact) return;
-    const updated = { ...contact, ...data, updatedAt: new Date().toISOString() };
-    await api.contacts.update(id, updated);
+    const prev = get().contacts.find((c) => c.id === id);
+    if (!prev) return;
+    const updated = { ...prev, ...data, updatedAt: new Date().toISOString() };
     set((s) => ({ contacts: s.contacts.map((c) => (c.id === id ? updated : c)) }));
+    api.contacts.update(id, updated).catch(() => {
+      set((s) => ({ contacts: s.contacts.map((c) => (c.id === id ? prev : c)) }));
+    });
   },
 
   deleteContact: async (id) => {
-    await api.contacts.remove(id);
+    const prev = get().contacts.find((c) => c.id === id);
     set((s) => ({ contacts: s.contacts.filter((c) => c.id !== id) }));
+    api.contacts.remove(id).catch(() => {
+      if (prev) set((s) => ({ contacts: [...s.contacts, prev] }));
+    });
   },
 }));

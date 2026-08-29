@@ -40,13 +40,18 @@ export const useReceptionStore = create<ReceptionStore>()((set, get) => ({
       notes,
       createdAt: new Date().toISOString(),
     };
-    await api.receptions.create(reception);
     set((s) => ({ receptions: [reception, ...s.receptions] }));
+    api.receptions.create(reception).catch(() => {
+      set((s) => ({ receptions: s.receptions.filter((r) => r.id !== reception.id) }));
+    });
     return reception;
   },
 
   deleteReception: async (id) => {
-    await api.receptions.remove(id);
+    const prev = get().receptions.find((r) => r.id === id);
     set((s) => ({ receptions: s.receptions.filter((r) => r.id !== id) }));
+    api.receptions.remove(id).catch(() => {
+      if (prev) set((s) => ({ receptions: [prev, ...s.receptions] }));
+    });
   },
 }));

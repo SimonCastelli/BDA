@@ -100,3 +100,9 @@ También podés exportar un backup manual desde el Dashboard en cualquier moment
 - Encabezados de todos los PDFs (remitos, lista de precios, liquidaciones) ahora en color bordo
 - Lista de precios PDF: nuevo filtro por bodega (además del filtro por categoría)
 - Lista de precios PDF: opción para incluir o excluir vinos sin stock al generar el PDF
+
+### v1.7 — Mejoras de rendimiento (velocidad)
+- La app ahora responde al instante en todas las acciones: editar precios, actualizar stock, guardar pedidos, etc.
+- Los cambios se muestran inmediatamente en pantalla y se guardan al servidor en segundo plano (optimistic updates)
+- El servidor ya no lee los archivos del disco en cada consulta: carga los datos en memoria al iniciar y los mantiene ahí
+- Si algo falla al guardar, la pantalla revierte automáticamente al valor anterior

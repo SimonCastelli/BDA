@@ -38,21 +38,28 @@ export const useLiquidacionStore = create<LiquidacionStore>()((set, get) => ({
       liquidacionNumber: get().getNextNumber(),
       createdAt: new Date().toISOString(),
     };
-    await api.liquidaciones.create(liquidacion);
     set((s) => ({ liquidaciones: [liquidacion, ...s.liquidaciones] }));
+    api.liquidaciones.create(liquidacion).catch(() => {
+      set((s) => ({ liquidaciones: s.liquidaciones.filter((l) => l.id !== liquidacion.id) }));
+    });
     return liquidacion;
   },
 
   updateLiquidacion: async (id, data) => {
-    const existing = get().liquidaciones.find((l) => l.id === id);
-    if (!existing) return;
-    const updated: Liquidacion = { ...existing, ...data };
-    await api.liquidaciones.update(id, updated);
+    const prev = get().liquidaciones.find((l) => l.id === id);
+    if (!prev) return;
+    const updated: Liquidacion = { ...prev, ...data };
     set((s) => ({ liquidaciones: s.liquidaciones.map((l) => (l.id === id ? updated : l)) }));
+    api.liquidaciones.update(id, updated).catch(() => {
+      set((s) => ({ liquidaciones: s.liquidaciones.map((l) => (l.id === id ? prev : l)) }));
+    });
   },
 
   deleteLiquidacion: async (id) => {
-    await api.liquidaciones.remove(id);
+    const prev = get().liquidaciones.find((l) => l.id === id);
     set((s) => ({ liquidaciones: s.liquidaciones.filter((l) => l.id !== id) }));
+    api.liquidaciones.remove(id).catch(() => {
+      if (prev) set((s) => ({ liquidaciones: [prev, ...s.liquidaciones] }));
+    });
   },
 }));
