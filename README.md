@@ -1,45 +1,82 @@
-# BDA — Bodega de Amigos
+# 🍷 BDA — Bodega de Amigos
 
-Sistema de gestión de stock, precios y pedidos para la bodega.
+Sistema web de gestión integral para una bodega/distribuidora de vinos: stock, precios por canal, pedidos, contactos, recepción de mercadería y liquidaciones — todo en una sola app, pensada para usarse desde varias PCs en la misma red.
+
+## Índice
+
+- [Funcionalidades](#funcionalidades)
+- [Arquitectura](#arquitectura)
+- [Instalación y uso](#instalación-y-uso)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Persistencia y backups](#persistencia-y-backups)
+- [Notas de seguridad](#notas-de-seguridad)
+- [Tecnologías](#tecnologías)
 
 ## Funcionalidades
 
-### 📦 Inventario (Stock)
-- Listado completo de vinos con código, categoría, bodega, varietal, cosecha y stock.
-- Búsqueda en tiempo real por nombre, código, bodega, varietal y región.
-- Filtro por categoría (Tinto, Blanco, Rosado, Espumante, Dulce, Otro).
-- Ordenamiento por columnas (nombre, categoría, stock, precio).
-- Agregar/Editar/Eliminar vinos con formulario completo.
-- Ajuste rápido de stock con botones +/− inline.
-- Código QR generado automáticamente por vino (visualizable e imprimible).
-- Alerta visual de stock crítico (≤ 6 botellas) con fondo destacado.
-- **Exportar a Excel** con todos los datos del inventario.
+### 📊 Dashboard
+Vista general con estadísticas clave, ventas por categoría, stock crítico y últimos pedidos.
+
+### 📦 Stock
+- Listado completo de vinos: código de barras, categoría, bodega, varietal, cosecha y stock.
+- Búsqueda en tiempo real y filtro por categoría.
+- Alta / edición / baja de vinos, con ajuste rápido de stock (+/−).
+- Código de barras CODE128 generado e imprimible por vino.
+- Importación masiva desde Excel (con plantilla descargable).
+- Alerta visual de **stock crítico** (≤ 6 botellas).
+- Exportación a Excel.
 
 ### 💰 Precios
-- Vista de los 3 precios por vino: **Botella**, **Caja**, **Mercado**.
-- **Edición inline**: click en cualquier precio para editarlo directamente.
-- Columna `% DESC.` que muestra el descuento vs. precio de mercado.
-- Búsqueda y filtro por categoría.
-- **Exportar a Excel** con tabla de precios.
+- Tres canales de precio por vino: **Botella suelta**, **Caja entera** y **Mercado/Restô**.
+- Edición inline (click en cualquier celda, guarda con Enter o al perder foco).
+- Lista de precios en **PDF**, filtrable por categoría y por bodega, con opción de excluir vinos sin stock.
+- Exportación a Excel.
 
 ### 🛒 Pedidos
-- Historial de pedidos con búsqueda y filtro por estado.
-- Estados: Borrador → Confirmado → Entregado (o Cancelado).
-- Resumen estadístico: total de pedidos, ingresos, confirmados, entregados.
+- Alta de pedido: selección de contacto (autocompleta cliente y canal), canal de precio global con override por ítem.
+- Estados: Borrador → Confirmado → Entregado / Cancelado.
+- Pedidos en Borrador/Confirmado son editables; al marcar **Entregado** se descuenta el stock automáticamente y el pedido queda bloqueado.
+- Remito en PDF por pedido.
 
-### 📝 Nuevo Pedido
-- Búsqueda de vinos para agregar al pedido.
-- Selección de cantidad, unidad (Botella/Caja) y tipo de precio (Botella/Caja/Mercado).
-- Formulario de cliente: nombre, teléfono, email, dirección, CUIT.
-- Descuento porcentual, forma de pago, fecha de entrega y notas.
-- Cálculo de subtotal y total en tiempo real.
+### 📇 Contactos
+CRUD de clientes/comercios con canal de precio por defecto, CUIT, dirección y notas.
 
-### 📄 Remito PDF
-- Generación de remito PDF profesional desde el detalle del pedido.
-- Incluye: datos del cliente, lista de productos, precios, totales y estado.
-- Descarga automática con nombre `BDA_Remito_BDA-XXXX.pdf`.
+### 📥 Recepción de mercadería
+Escaneo o búsqueda por código de barras para sumar stock; si el código no existe, alta rápida de vino nuevo. Historial de recepciones numeradas (`REC-0001…`).
 
----
+### 🧾 Liquidaciones
+Gestión de liquidaciones a clientes, con numeración propia (`LIQ-0001…`) y PDF.
+
+### ⚙️ Configuración
+Categorías de vino dinámicas (crear, renombrar, recolorear) y backup/restore de todos los datos desde la app.
+
+## Arquitectura
+
+La app es un cliente React (Vite) que habla por HTTP con un servidor Express propio — pensada para correr en una PC de la red local y ser usada desde el navegador de cualquier otra PC de esa misma red.
+
+```
+Navegador (React SPA) ── fetch /api/* ──► server.js (Express) ──► data/*.json
+```
+
+- El servidor carga los `data/*.json` en memoria al iniciar y los persiste en disco en cada escritura.
+- El cliente hace *optimistic updates*: aplica el cambio en pantalla al instante y lo confirma contra el servidor en segundo plano; si falla, revierte.
+- Router: React Router v6 en modo `HashRouter` (rutas del tipo `index.html#/stock`), lo que permite abrir el build también con `file://` si hiciera falta.
+
+| Ruta | Página |
+|---|---|
+| `/` | Dashboard |
+| `/stock` | Inventario |
+| `/precios` | Precios por canal |
+| `/pedidos` | Lista de pedidos |
+| `/pedidos/nuevo` | Nuevo pedido |
+| `/pedidos/:id` | Detalle de pedido |
+| `/pedidos/:id/editar` | Editar pedido |
+| `/contactos` | Contactos |
+| `/recepcion` | Recepción de mercadería |
+| `/liquidaciones` | Lista de liquidaciones |
+| `/liquidaciones/nueva` | Nueva liquidación |
+| `/liquidaciones/:id/editar` | Editar liquidación |
+| `/configuracion` | Categorías y backup |
 
 ## Instalación y uso
 
@@ -47,85 +84,83 @@ Sistema de gestión de stock, precios y pedidos para la bodega.
 - Node.js 18+
 - npm 9+
 
-### Pasos
+### Desarrollo
 
 ```bash
-# Clonar / entrar al directorio
-cd ~/Proyectos/bda
-
-# Instalar dependencias
 npm install
-
-# Iniciar servidor de desarrollo
 npm run dev
 ```
 
-La app queda disponible en **http://localhost:5173**
+Abre **http://localhost:5173** — el dev server proxea `/api` hacia `http://localhost:3000`, así que para tener datos hace falta el backend corriendo en paralelo (ver abajo).
 
-### Build para producción
+### Producción (server + build)
 
 ```bash
-npm run build
-npm run preview
+npm run build   # genera dist/
+node server.js  # sirve dist/ y la API en http://localhost:3000
 ```
 
----
+En Windows, `iniciar.bat` hace ambos pasos con doble click. Desde otra PC de la misma red: `http://<IP-de-esta-PC>:3000`.
 
-## Tecnologías
+### Type-check
 
-| Herramienta | Uso |
-|---|---|
-| React 18 + TypeScript | Interfaz de usuario |
-| Vite | Bundler y dev server |
-| Tailwind CSS | Estilos |
-| Zustand + localStorage | Estado persistente (datos guardados en el navegador) |
-| React Router v6 | Navegación entre páginas |
-| SheetJS (xlsx) | Exportación a Excel |
-| jsPDF + jspdf-autotable | Generación de PDF |
-| react-qr-code | Códigos QR |
-| lucide-react | Íconos |
-| date-fns | Formato de fechas en español |
-
----
+```bash
+npx tsc --noEmit
+```
 
 ## Estructura del proyecto
 
 ```
 src/
-├── types/          # Tipos TypeScript (Wine, Order, etc.)
-├── store/          # Estado global (Zustand + localStorage)
+├── types/index.ts        → tipos compartidos (Wine, Order, Contact, Liquidacion, …)
+├── api/                   → cliente fetch tipado hacia /api/*
+├── store/                 → estado global (Zustand) con optimistic updates
 │   ├── wineStore.ts
-│   └── orderStore.ts
-├── utils/          # Funciones utilitarias
-│   ├── excel.ts    # Exportación Excel
-│   ├── pdf.ts      # Generación PDF
-│   └── format.ts   # Formato de moneda/fecha
+│   ├── orderStore.ts
+│   ├── contactStore.ts
+│   ├── receptionStore.ts
+│   ├── liquidacionStore.ts
+│   └── categoryStore.ts
+├── utils/
+│   ├── excel.ts           → exportación a Excel
+│   ├── pdf.ts              → remitos, listas de precios, liquidaciones en PDF
+│   └── format.ts           → moneda (ARS), fechas, ids
 ├── components/
-│   ├── ui/         # Componentes reutilizables (Modal, Badge, etc.)
-│   └── Layout/     # Sidebar y estructura de layout
-└── pages/          # Páginas principales
-    ├── Dashboard.tsx
-    ├── StockPage.tsx
-    ├── PricesPage.tsx
-    ├── OrdersPage.tsx
-    ├── NewOrderPage.tsx
-    └── OrderDetailPage.tsx
+│   ├── ui/                 → Modal, ConfirmDialog, SearchBar, Badge, EmptyState
+│   └── Layout/              → Sidebar y layout general
+└── pages/                  → una página por ruta (ver tabla de arriba)
+
+server.js                  → API REST + servido estático de dist/
+data/                       → JSON con los datos reales (no versionado)
+backups/                    → backups diarios automáticos (no versionado)
 ```
 
+## Persistencia y backups
+
+Los datos viven en `data/*.json` en el servidor (no en el navegador) y **no forman parte del repositorio** — ver `.gitignore`. Cada PC/servidor que corre la app tiene sus propios datos reales en disco.
+
+- El servidor genera un **backup automático diario** en `backups/` (se conservan los últimos 7).
+- Desde **Configuración** también se puede exportar/restaurar un backup manual en cualquier momento.
+
+## Notas de seguridad
+
+La API (`server.js`) no tiene autenticación: está pensada para correr únicamente dentro de una red local de confianza. Si se despliega en un servidor accesible desde internet, hay que agregar autenticación (API key o login) antes de exponerla — de lo contrario cualquiera con la URL puede leer o modificar todos los datos.
+
+## Tecnologías
+
+| Herramienta | Uso |
+|---|---|
+| React 18 + TypeScript + Vite | UI y build |
+| Express | API REST + servido estático |
+| Tailwind CSS | Estilos |
+| Zustand | Estado en cliente (optimistic updates) |
+| React Router v6 (HashRouter) | Navegación |
+| SheetJS (xlsx) | Import/export Excel |
+| jsPDF + jspdf-autotable | Remitos, listas de precios y liquidaciones en PDF |
+| react-barcode | Códigos de barras CODE128 |
+| lucide-react | Íconos |
+| date-fns | Fechas en español |
+
 ---
 
-## Persistencia de datos
-
-Los datos se guardan automáticamente en el **localStorage del navegador** bajo las claves:
-- `bda-wines` — inventario de vinos
-- `bda-orders` — historial de pedidos
-
-Para hacer un backup, exportar el stock a Excel desde la página de Inventario.
-
----
-
-## Notas
-
-- La numeración de pedidos es automática y secuencial: `BDA-0001`, `BDA-0002`, etc.
-- El stock crítico se define como ≤ 6 botellas.
-- Los precios son en **pesos argentinos (ARS)**.
+Ver [`ACTUALIZACIONES.md`](./ACTUALIZACIONES.md) para el historial de versiones y el flujo de actualización en producción.
