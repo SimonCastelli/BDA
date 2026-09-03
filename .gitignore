@@ -3,3 +3,10 @@ dist/
 *.local
 .DS_Store
 *.zip
+
+# Datos reales de la bodega (contactos, pedidos, precios) — no van al repo
+data/
+backups/
+
+# Documentos de negocio sensibles (listas de precios a comercios, etc.)
+Logo/BDA Precios Comercio Julio 2026.pdf
