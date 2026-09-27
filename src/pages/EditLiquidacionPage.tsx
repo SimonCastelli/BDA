@@ -10,6 +10,8 @@ import { Client, LiquidacionItem, OrderUnit, Contact } from '../types';
 import { formatCurrency, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { DraftBanner } from '../components/ui/DraftBanner';
+import { useDraftAutosave } from '../hooks/useDraftAutosave';
 
 type PriceChannel = 'bottle' | 'case' | 'market';
 
@@ -18,6 +20,14 @@ interface WineRowState {
   unit: OrderUnit;
   priceType: PriceChannel;
   customPrice: string;
+}
+
+interface LiquidacionEditSnapshot {
+  client: Client;
+  items: LiquidacionItem[];
+  discount: number;
+  notes: string;
+  paymentMethod: string;
 }
 
 const CHANNEL_LABELS: Record<PriceChannel, string> = {
@@ -83,6 +93,42 @@ export function EditLiquidacionPage() {
     setNotes(liq.notes ?? '');
     setPaymentMethod(liq.paymentMethod ?? '');
   }, [liq]);
+
+  const draftSnapshot: LiquidacionEditSnapshot = { client, items, discount, notes, paymentMethod };
+
+  const { restored, dismissRestored, clearDraft } = useDraftAutosave<LiquidacionEditSnapshot>({
+    storageKey: `bda-draft-liquidacion-edit-${id ?? 'unknown'}`,
+    data: draftSnapshot,
+    enabled: !!liq,
+    isMeaningful: () => true,
+    onPersisted: async (d) => {
+      if (!liq) return;
+      const subtotal = d.items.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = subtotal - subtotal * (d.discount / 100);
+      try {
+        await updateLiquidacion(liq.id, {
+          client: d.client,
+          items: d.items,
+          subtotal,
+          discount: d.discount,
+          total,
+          paymentMethod: d.paymentMethod.trim() || undefined,
+          notes: d.notes.trim() || undefined,
+        });
+      } catch {
+        // sin conexión: se reintenta en el próximo cambio
+      }
+    },
+  });
+
+  function applyRestoredDraft(d: LiquidacionEditSnapshot) {
+    setClient(d.client);
+    setItems(d.items);
+    setDiscount(d.discount);
+    setNotes(d.notes);
+    setPaymentMethod(d.paymentMethod);
+    dismissRestored();
+  }
 
   if (!liq) {
     return (
@@ -205,6 +251,7 @@ export function EditLiquidacionPage() {
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     });
 
+    clearDraft();
     navigate('/liquidaciones');
   }
 
@@ -220,6 +267,14 @@ export function EditLiquidacionPage() {
           <p className="text-sm text-gray-400 font-mono">{liq.liquidacionNumber}</p>
         </div>
       </div>
+
+      {restored && (
+        <DraftBanner
+          savedAt={restored.savedAt}
+          onContinue={() => applyRestoredDraft(restored.data)}
+          onDiscard={() => { clearDraft(); dismissRestored(); }}
+        />
+      )}
 
       <div className="flex gap-6 items-start">
         {/* Left: wine selection */}
@@ -320,62 +375,6 @@ export function EditLiquidacionPage() {
 
         {/* Right: summary */}
         <div className="w-[440px] flex-shrink-0 space-y-4">
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-800">Datos del Cliente</h2>
-              <button onClick={() => { setContactModal(true); setContactSearch(''); }} className="btn-ghost text-xs gap-1.5 text-burgundy hover:text-burgundy-dark">
-                <Users size={14} />
-                Seleccionar contacto
-              </button>
-            </div>
-
-            <div>
-              <p className="label">Nombre del cliente *</p>
-              {errors.client && <p className="text-xs text-red-500 mb-1">{errors.client}</p>}
-              <input
-                type="text"
-                value={client.name}
-                onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
-                placeholder="Nombre del cliente"
-                className={clsx('input', errors.client && 'border-red-400 focus:border-red-400 focus:ring-red-200')}
-              />
-            </div>
-            <div>
-              <p className="label">Nombre del negocio</p>
-              <input
-                type="text"
-                value={client.company}
-                onChange={(e) => setClient((c) => ({ ...c, company: e.target.value }))}
-                placeholder="Restaurante / comercio..."
-                className="input"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="label">CUIT</p>
-                <input type="text" value={client.cuit} onChange={(e) => setClient((c) => ({ ...c, cuit: e.target.value }))} placeholder="20-12345678-9" className="input" />
-              </div>
-              <div>
-                <p className="label">Teléfono</p>
-                <input type="text" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} placeholder="+54 11..." className="input" />
-              </div>
-            </div>
-            <div>
-              <p className="label">Dirección</p>
-              <input type="text" value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder="Calle 123, Ciudad" className="input" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="label">Forma de pago</p>
-                <input type="text" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Efectivo, transferencia..." className="input" />
-              </div>
-            </div>
-            <div>
-              <p className="label">Notas</p>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones..." rows={2} className="input resize-none" />
-            </div>
-          </div>
-
           <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
@@ -436,8 +435,64 @@ export function EditLiquidacionPage() {
             </div>
 
             <div className="flex gap-2 mt-4">
-              <button onClick={() => navigate('/liquidaciones')} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={() => { clearDraft(); navigate('/liquidaciones'); }} className="btn-secondary flex-1">Cancelar</button>
               <button onClick={handleSave} className="btn-primary flex-1">Guardar Cambios</button>
+            </div>
+          </div>
+
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-800">Datos del Cliente</h2>
+              <button onClick={() => { setContactModal(true); setContactSearch(''); }} className="btn-ghost text-xs gap-1.5 text-burgundy hover:text-burgundy-dark">
+                <Users size={14} />
+                Seleccionar contacto
+              </button>
+            </div>
+
+            <div>
+              <p className="label">Nombre del cliente *</p>
+              {errors.client && <p className="text-xs text-red-500 mb-1">{errors.client}</p>}
+              <input
+                type="text"
+                value={client.name}
+                onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))}
+                placeholder="Nombre del cliente"
+                className={clsx('input', errors.client && 'border-red-400 focus:border-red-400 focus:ring-red-200')}
+              />
+            </div>
+            <div>
+              <p className="label">Nombre del negocio</p>
+              <input
+                type="text"
+                value={client.company}
+                onChange={(e) => setClient((c) => ({ ...c, company: e.target.value }))}
+                placeholder="Restaurante / comercio..."
+                className="input"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="label">CUIT</p>
+                <input type="text" value={client.cuit} onChange={(e) => setClient((c) => ({ ...c, cuit: e.target.value }))} placeholder="20-12345678-9" className="input" />
+              </div>
+              <div>
+                <p className="label">Teléfono</p>
+                <input type="text" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} placeholder="+54 11..." className="input" />
+              </div>
+            </div>
+            <div>
+              <p className="label">Dirección</p>
+              <input type="text" value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} placeholder="Calle 123, Ciudad" className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="label">Forma de pago</p>
+                <input type="text" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Efectivo, transferencia..." className="input" />
+              </div>
+            </div>
+            <div>
+              <p className="label">Notas</p>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones..." rows={2} className="input resize-none" />
             </div>
           </div>
         </div>

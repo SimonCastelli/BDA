@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 import { useWineStore } from '../store/wineStore';
 import { useReceptionStore } from '../store/receptionStore';
 import { useCategoryStore } from '../store/categoryStore';
-import { Wine, StockReceptionItem } from '../types';
+import { Wine, StockReceptionItem, OrderUnit } from '../types';
 import { formatCurrency, formatDate, formatDateShort, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -15,7 +15,12 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 interface IntakeItem {
   wine: Wine;
   quantity: number;
+  unit: OrderUnit;
   isNew: boolean;
+}
+
+function bottleEquivalent(item: IntakeItem): number {
+  return item.unit === 'case' ? item.quantity * item.wine.bottlesPerCase : item.quantity;
 }
 
 interface QuickWineForm {
@@ -99,7 +104,7 @@ export function StockIntakePage() {
     setIntakeItems((prev) => {
       const existing = prev.findIndex((i) => i.wine.id === wine.id);
       if (existing >= 0) return prev.map((item, idx) => idx === existing ? { ...item, quantity: item.quantity + 1 } : item);
-      return [...prev, { wine, quantity: 1, isNew }];
+      return [...prev, { wine, quantity: 1, unit: 'bottle', isNew }];
     });
   }
 
@@ -111,6 +116,10 @@ export function StockIntakePage() {
 
   function setItemQty(wineId: string, qty: number) {
     setIntakeItems((prev) => prev.map((i) => i.wine.id === wineId ? { ...i, quantity: Math.max(1, qty) } : i));
+  }
+
+  function setItemUnit(wineId: string, unit: OrderUnit) {
+    setIntakeItems((prev) => prev.map((i) => i.wine.id === wineId ? { ...i, unit } : i));
   }
 
   function removeItem(wineId: string) {
@@ -154,19 +163,19 @@ export function StockIntakePage() {
   }
 
   async function applyStock() {
-    await Promise.all(intakeItems.map((item) => updateStock(item.wine.id, item.quantity)));
+    await Promise.all(intakeItems.map((item) => updateStock(item.wine.id, bottleEquivalent(item))));
     const items: StockReceptionItem[] = intakeItems.map((i) => ({
       wineId: i.wine.id, wineName: i.wine.name, wineCode: i.wine.code,
-      quantity: i.quantity, isNew: i.isNew,
+      quantity: i.quantity, unit: i.unit, isNew: i.isNew,
     }));
-    await addReception(items, intakeNotes.trim() || undefined);
+    await addReception(items, totalBottles, intakeNotes.trim() || undefined);
 
     setIntakeItems([]);
     setScanInput(''); setNotFoundCode(''); setIntakeNotes('');
     setAppliedModal(true);
   }
 
-  const totalBottles = intakeItems.reduce((s, i) => s + i.quantity, 0);
+  const totalBottles = intakeItems.reduce((s, i) => s + bottleEquivalent(i), 0);
   const newWinesCount = intakeItems.filter((i) => i.isNew).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -302,7 +311,8 @@ export function StockIntakePage() {
                       </div>
                       {!item.isNew && (
                         <div className="text-xs text-gray-400 mt-0.5">
-                          Stock actual: {item.wine.stock} → después: <strong className="text-green-600">{item.wine.stock + item.quantity}</strong>
+                          Stock actual: {item.wine.stock} → después: <strong className="text-green-600">{item.wine.stock + bottleEquivalent(item)}</strong>
+                          {item.unit === 'case' && <span className="ml-1">({bottleEquivalent(item)} bot.)</span>}
                         </div>
                       )}
                     </div>
@@ -312,9 +322,16 @@ export function StockIntakePage() {
                       <input type="number" min={1} value={item.quantity}
                         onChange={(e) => setItemQty(item.wine.id, parseInt(e.target.value) || 1)}
                         className="input w-16 text-center font-semibold" />
+                      <select
+                        value={item.unit}
+                        onChange={(e) => setItemUnit(item.wine.id, e.target.value as OrderUnit)}
+                        className="input w-24 pr-1"
+                      >
+                        <option value="bottle">Botella</option>
+                        <option value="case">Caja</option>
+                      </select>
                       <button onClick={() => setItemQty(item.wine.id, item.quantity + 1)}
                         className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 text-lg leading-none font-medium transition-colors">+</button>
-                      <span className="text-xs text-gray-400 w-10">bot.</span>
                     </div>
                     <button onClick={() => removeItem(item.wine.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
                       <X size={15} />
@@ -406,7 +423,7 @@ export function StockIntakePage() {
                             <tr>
                               <th className="table-header text-left">Vino</th>
                               <th className="table-header text-left">Código de Barras</th>
-                              <th className="table-header text-center">Botellas recibidas</th>
+                              <th className="table-header text-center">Cantidad recibida</th>
                               <th className="table-header text-center">Estado</th>
                             </tr>
                           </thead>
@@ -417,7 +434,9 @@ export function StockIntakePage() {
                                 <td className="table-cell">
                                   <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">{item.wineCode}</code>
                                 </td>
-                                <td className="table-cell text-center font-semibold text-gray-700">{item.quantity}</td>
+                                <td className="table-cell text-center font-semibold text-gray-700">
+                                  {item.quantity} {(item.unit ?? 'bottle') === 'case' ? 'caja(s)' : 'bot.'}
+                                </td>
                                 <td className="table-cell text-center">
                                   {item.isNew ? (
                                     <span className="text-xs bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">registrado nuevo</span>

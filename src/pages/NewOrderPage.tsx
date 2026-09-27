@@ -13,11 +13,27 @@ import {
 import { formatCurrency, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { DraftBanner } from '../components/ui/DraftBanner';
+import { useDraftAutosave } from '../hooks/useDraftAutosave';
 
 interface WineRowState {
   quantity: number;
   unit: OrderUnit;
   priceType: PriceType;
+}
+
+interface OrderDraftSnapshot {
+  client: Client;
+  selectedContactId?: string;
+  selectedContactSerial?: number;
+  items: OrderItem[];
+  discount: number;
+  notes: string;
+  paymentMethod: string;
+  deliveryDate: string;
+  defaultPriceType: 'bottle' | 'case' | 'market';
+  status: OrderStatus;
+  draftId?: string;
 }
 
 const PRICE_CHANNELS: { value: 'bottle' | 'case' | 'market'; label: string; desc: string }[] = [
@@ -40,7 +56,7 @@ const PRICE_CHANNEL_ACTIVE: Record<'bottle' | 'case' | 'market', string> = {
 export function NewOrderPage() {
   const navigate = useNavigate();
   const { wines } = useWineStore();
-  const { addOrder } = useOrderStore();
+  const { addOrder, updateOrder } = useOrderStore();
   const { contacts } = useContactStore();
   const getLabel = useCategoryStore((s) => s.getLabel);
 
@@ -62,6 +78,60 @@ export function NewOrderPage() {
 
   const [contactModal, setContactModal] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
+  const [draftId, setDraftId] = useState<string | undefined>(undefined);
+
+  const draftSnapshot: OrderDraftSnapshot = {
+    client, selectedContactId, selectedContactSerial, items, discount, notes,
+    paymentMethod, deliveryDate, defaultPriceType, status, draftId,
+  };
+
+  const { restored, dismissRestored, clearDraft } = useDraftAutosave<OrderDraftSnapshot>({
+    storageKey: 'bda-draft-order-new',
+    data: draftSnapshot,
+    enabled: true,
+    isMeaningful: (d) => d.client.name.trim() !== '' || d.items.length > 0,
+    onPersisted: async (d) => {
+      const subtotal = d.items.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = subtotal - subtotal * (d.discount / 100);
+      const payload = {
+        client: d.client,
+        ...(d.selectedContactId ? { contactId: d.selectedContactId } : {}),
+        items: d.items,
+        subtotal,
+        discount: d.discount,
+        total,
+        status: 'draft' as OrderStatus,
+        ...(d.paymentMethod.trim() ? { paymentMethod: d.paymentMethod.trim() } : {}),
+        ...(d.notes.trim() ? { notes: d.notes.trim() } : {}),
+        ...(d.deliveryDate ? { deliveryDate: d.deliveryDate } : {}),
+      };
+      // Los stores hacen optimistic update y revierten solos si falla el guardado en el
+      // servidor — por eso, antes de actualizar, confirmamos que el borrador siga existiendo
+      // (si el create original falló offline, hay que reintentar como creación, no como update).
+      const draftStillExists = d.draftId && useOrderStore.getState().orders.some((o) => o.id === d.draftId);
+      if (!draftStillExists) {
+        const created = await addOrder(payload, d.selectedContactSerial);
+        setDraftId(created.id);
+      } else {
+        await updateOrder(d.draftId!, payload);
+      }
+    },
+  });
+
+  function applyRestoredDraft(d: OrderDraftSnapshot) {
+    setClient(d.client);
+    setSelectedContactId(d.selectedContactId);
+    setSelectedContactSerial(d.selectedContactSerial);
+    setItems(d.items);
+    setDiscount(d.discount);
+    setNotes(d.notes);
+    setPaymentMethod(d.paymentMethod);
+    setDeliveryDate(d.deliveryDate);
+    setDefaultPriceType(d.defaultPriceType);
+    setStatus(d.status);
+    setDraftId(d.draftId);
+    dismissRestored();
+  }
 
   const filteredWines = wines.filter((w) => {
     if (!search) return true;
@@ -200,7 +270,7 @@ export function NewOrderPage() {
       ...(client.cuit?.trim() ? { cuit: client.cuit.trim() } : {}),
     };
 
-    const order = await addOrder({
+    const payload = {
       client: cleanClient,
       ...(selectedContactId ? { contactId: selectedContactId } : {}),
       items,
@@ -211,9 +281,20 @@ export function NewOrderPage() {
       ...(paymentMethod.trim() ? { paymentMethod: paymentMethod.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
       ...(deliveryDate ? { deliveryDate } : {}),
-    }, selectedContactSerial);
+    };
 
-    navigate(`/pedidos/${order.id}`);
+    const draftStillExists = draftId && useOrderStore.getState().orders.some((o) => o.id === draftId);
+    let orderId: string;
+    if (draftStillExists) {
+      await updateOrder(draftId!, payload);
+      orderId = draftId!;
+    } else {
+      const order = await addOrder(payload, selectedContactSerial);
+      orderId = order.id;
+    }
+
+    clearDraft();
+    navigate(`/pedidos/${orderId}`);
   }
 
   const activePriceChannel = PRICE_CHANNELS.find((p) => p.value === defaultPriceType)!;
@@ -227,6 +308,14 @@ export function NewOrderPage() {
         </button>
         <h1 className="text-2xl font-bold text-gray-900">Nuevo Pedido</h1>
       </div>
+
+      {restored && (
+        <DraftBanner
+          savedAt={restored.savedAt}
+          onContinue={() => applyRestoredDraft(restored.data)}
+          onDiscard={() => { clearDraft(); dismissRestored(); }}
+        />
+      )}
 
       <div className="flex gap-6 items-start">
         {/* Left: wine selection */}
@@ -351,6 +440,71 @@ export function NewOrderPage() {
 
         {/* Right: order summary */}
         <div className="w-[440px] flex-shrink-0 space-y-4">
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
+              {items.length > 0 && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <ShoppingCart size={28} className="text-gray-300 mb-2" />
+                <p className="text-sm text-gray-400">No hay productos agregados</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
+                      <p className="text-xs text-gray-400">
+                        {item.quantity} {item.unit === 'bottle' ? 'bot.' : 'caja(s)'} · {PRICE_TYPE_SHORT[item.priceType]} · {formatCurrency(item.unitPrice)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-sm font-semibold text-gray-700">{formatCurrency(item.subtotal)}</span>
+                      <button onClick={() => removeItem(item.id)} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-medium">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Descuento</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={discount}
+                      onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                      className="input w-14 text-center py-0.5 text-xs"
+                    />
+                    <span className="text-gray-400 text-xs">%</span>
+                  </div>
+                </div>
+                {discount > 0 && <span className="text-green-600 font-medium">-{formatCurrency(discountAmount)}</span>}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="font-bold text-gray-900">TOTAL</span>
+                <span className="text-xl font-bold text-burgundy">{formatCurrency(total)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { clearDraft(); navigate('/pedidos'); }} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={handleSave} className="btn-primary flex-1">Guardar Pedido</button>
+            </div>
+          </div>
+
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-800">Resumen del Pedido</h2>
@@ -428,71 +582,6 @@ export function NewOrderPage() {
             <div>
               <p className="label">Notas</p>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones del pedido..." rows={2} className="input resize-none" />
-            </div>
-          </div>
-
-          <div className="card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
-              {items.length > 0 && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
-            </div>
-            {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <ShoppingCart size={28} className="text-gray-300 mb-2" />
-                <p className="text-sm text-gray-400">No hay productos agregados</p>
-              </div>
-            ) : (
-              <div className="space-y-2 mb-4">
-                {items.map((item) => (
-                  <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
-                      <p className="text-xs text-gray-400">
-                        {item.quantity} {item.unit === 'bottle' ? 'bot.' : 'caja(s)'} · {PRICE_TYPE_SHORT[item.priceType]} · {formatCurrency(item.unitPrice)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-sm font-semibold text-gray-700">{formatCurrency(item.subtotal)}</span>
-                      <button onClick={() => removeItem(item.id)} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-gray-100 pt-3 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span className="font-medium">{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">Descuento</span>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={discount}
-                      onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                      className="input w-14 text-center py-0.5 text-xs"
-                    />
-                    <span className="text-gray-400 text-xs">%</span>
-                  </div>
-                </div>
-                {discount > 0 && <span className="text-green-600 font-medium">-{formatCurrency(discountAmount)}</span>}
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className="font-bold text-gray-900">TOTAL</span>
-                <span className="text-xl font-bold text-burgundy">{formatCurrency(total)}</span>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => navigate('/pedidos')} className="btn-secondary flex-1">Cancelar</button>
-              <button onClick={handleSave} className="btn-primary flex-1">Guardar Pedido</button>
             </div>
           </div>
         </div>

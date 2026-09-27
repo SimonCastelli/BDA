@@ -116,6 +116,8 @@ export interface LiquidacionItem {
   subtotal: number;
 }
 
+export type LiquidacionStatus = 'draft' | 'confirmed';
+
 export interface Liquidacion {
   id: string;
   liquidacionNumber: string;
@@ -126,6 +128,7 @@ export interface Liquidacion {
   total: number;
   notes?: string;
   paymentMethod?: string;
+  status?: LiquidacionStatus; // ausente en liquidaciones antiguas → tratar como 'confirmed'
   createdAt: string;
 }
 
@@ -134,6 +137,7 @@ export interface StockReceptionItem {
   wineName: string;
   wineCode: string;
   quantity: number;
+  unit?: OrderUnit; // ausente en recepciones antiguas → tratar como 'bottle'
   isNew: boolean;
 }
 

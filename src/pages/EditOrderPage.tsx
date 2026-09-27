@@ -13,11 +13,25 @@ import {
 import { formatCurrency, generateId } from '../utils/format';
 import { CategoryBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { DraftBanner } from '../components/ui/DraftBanner';
+import { useDraftAutosave } from '../hooks/useDraftAutosave';
 
 interface WineRowState {
   quantity: number;
   unit: OrderUnit;
   priceType: PriceType;
+}
+
+interface OrderEditSnapshot {
+  client: Client;
+  selectedContactId?: string;
+  items: OrderItem[];
+  discount: number;
+  notes: string;
+  paymentMethod: string;
+  deliveryDate: string;
+  defaultPriceType: 'bottle' | 'case' | 'market';
+  status: OrderStatus;
 }
 
 const PRICE_CHANNELS: { value: 'bottle' | 'case' | 'market'; label: string; desc: string }[] = [
@@ -86,6 +100,51 @@ export function EditOrderPage() {
       setInitialized(true);
     }
   }, [order, initialized]);
+
+  const draftSnapshot: OrderEditSnapshot = {
+    client, selectedContactId, items, discount, notes, paymentMethod, deliveryDate, defaultPriceType, status,
+  };
+
+  const { restored, dismissRestored, clearDraft } = useDraftAutosave<OrderEditSnapshot>({
+    storageKey: `bda-draft-order-edit-${id ?? 'unknown'}`,
+    data: draftSnapshot,
+    enabled: initialized,
+    isMeaningful: () => true,
+    onPersisted: async (d) => {
+      if (!id) return;
+      const subtotal = d.items.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = subtotal - subtotal * (d.discount / 100);
+      try {
+        await updateOrder(id, {
+          client: d.client,
+          contactId: d.selectedContactId,
+          items: d.items,
+          subtotal,
+          discount: d.discount,
+          total,
+          status: d.status,
+          paymentMethod: d.paymentMethod.trim() || undefined,
+          notes: d.notes.trim() || undefined,
+          deliveryDate: d.deliveryDate || undefined,
+        });
+      } catch {
+        // sin conexión: se reintenta en el próximo cambio
+      }
+    },
+  });
+
+  function applyRestoredDraft(d: OrderEditSnapshot) {
+    setClient(d.client);
+    setSelectedContactId(d.selectedContactId);
+    setItems(d.items);
+    setDiscount(d.discount);
+    setNotes(d.notes);
+    setPaymentMethod(d.paymentMethod);
+    setDeliveryDate(d.deliveryDate);
+    setDefaultPriceType(d.defaultPriceType);
+    setStatus(d.status);
+    dismissRestored();
+  }
 
   if (!order) {
     return (
@@ -267,6 +326,7 @@ export function EditOrderPage() {
       deliveryDate: deliveryDate || undefined,
     });
 
+    clearDraft();
     navigate(`/pedidos/${order!.id}`);
   }
 
@@ -284,6 +344,14 @@ export function EditOrderPage() {
           <p className="text-sm text-gray-400 font-mono">{order.orderNumber}</p>
         </div>
       </div>
+
+      {restored && (
+        <DraftBanner
+          savedAt={restored.savedAt}
+          onContinue={() => applyRestoredDraft(restored.data)}
+          onDiscard={() => { clearDraft(); dismissRestored(); }}
+        />
+      )}
 
       <div className="flex gap-6 items-start">
         {/* Left: wine selection */}
@@ -407,6 +475,79 @@ export function EditOrderPage() {
 
         {/* Right: order summary */}
         <div className="w-[440px] flex-shrink-0 space-y-4">
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
+              {items.length > 0 && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+            </div>
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <ShoppingCart size={28} className="text-gray-300 mb-2" />
+                <p className="text-sm text-gray-400">No hay productos agregados</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
+                      <p className="text-xs text-gray-400">
+                        {PRICE_TYPE_SHORT[item.priceType]} · {formatCurrency(item.unitPrice)} c/u
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) => updateItemQuantity(item.id, Math.max(1, parseInt(e.target.value) || 1))}
+                        className="input w-14 text-center py-0.5 text-sm"
+                      />
+                      <span className="text-xs text-gray-400">{item.unit === 'bottle' ? 'bot.' : 'caja(s)'}</span>
+                      <span className="text-sm font-semibold text-gray-700 min-w-[70px] text-right">{formatCurrency(item.subtotal)}</span>
+                      <button onClick={() => removeItem(item.id)} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-medium">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Descuento</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={discount}
+                      onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                      className="input w-14 text-center py-0.5 text-xs"
+                    />
+                    <span className="text-gray-400 text-xs">%</span>
+                  </div>
+                </div>
+                {discount > 0 && <span className="text-green-600 font-medium">-{formatCurrency(discountAmount)}</span>}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="font-bold text-gray-900">TOTAL</span>
+                <span className="text-xl font-bold text-burgundy">{formatCurrency(total)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { clearDraft(); navigate(`/pedidos/${order.id}`); }} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={handleSave} className="btn-primary flex-1">Guardar Cambios</button>
+            </div>
+          </div>
+
           <div className="card p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-800">Resumen del Pedido</h2>
@@ -483,79 +624,6 @@ export function EditOrderPage() {
             <div>
               <p className="label">Notas</p>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones del pedido..." rows={2} className="input resize-none" />
-            </div>
-          </div>
-
-          <div className="card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">Productos</h3>
-              {items.length > 0 && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
-            </div>
-            {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <ShoppingCart size={28} className="text-gray-300 mb-2" />
-                <p className="text-sm text-gray-400">No hay productos agregados</p>
-              </div>
-            ) : (
-              <div className="space-y-2 mb-4">
-                {items.map((item) => (
-                  <div key={item.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{item.wineName}</p>
-                      <p className="text-xs text-gray-400">
-                        {PRICE_TYPE_SHORT[item.priceType]} · {formatCurrency(item.unitPrice)} c/u
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <input
-                        type="number"
-                        min={1}
-                        value={item.quantity}
-                        onChange={(e) => updateItemQuantity(item.id, Math.max(1, parseInt(e.target.value) || 1))}
-                        className="input w-14 text-center py-0.5 text-sm"
-                      />
-                      <span className="text-xs text-gray-400">{item.unit === 'bottle' ? 'bot.' : 'caja(s)'}</span>
-                      <span className="text-sm font-semibold text-gray-700 min-w-[70px] text-right">{formatCurrency(item.subtotal)}</span>
-                      <button onClick={() => removeItem(item.id)} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-gray-100 pt-3 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span className="font-medium">{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">Descuento</span>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={discount}
-                      onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                      className="input w-14 text-center py-0.5 text-xs"
-                    />
-                    <span className="text-gray-400 text-xs">%</span>
-                  </div>
-                </div>
-                {discount > 0 && <span className="text-green-600 font-medium">-{formatCurrency(discountAmount)}</span>}
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className="font-bold text-gray-900">TOTAL</span>
-                <span className="text-xl font-bold text-burgundy">{formatCurrency(total)}</span>
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => navigate(`/pedidos/${order.id}`)} className="btn-secondary flex-1">Cancelar</button>
-              <button onClick={handleSave} className="btn-primary flex-1">Guardar Cambios</button>
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ interface ReceptionStore {
   receptions: StockReception[];
   isLoading: boolean;
   init: () => Promise<void>;
-  addReception: (items: StockReceptionItem[], notes?: string) => Promise<StockReception>;
+  addReception: (items: StockReceptionItem[], totalBottles: number, notes?: string) => Promise<StockReception>;
   deleteReception: (id: string) => Promise<void>;
   getNextNumber: () => string;
 }
@@ -30,12 +30,12 @@ export const useReceptionStore = create<ReceptionStore>()((set, get) => ({
     return `REC-${String(next).padStart(4, '0')}`;
   },
 
-  addReception: async (items, notes) => {
+  addReception: async (items, totalBottles, notes) => {
     const reception: StockReception = {
       id: generateId(),
       receptionNumber: get().getNextNumber(),
       items,
-      totalBottles: items.reduce((s, i) => s + i.quantity, 0),
+      totalBottles,
       newWinesCount: items.filter((i) => i.isNew).length,
       notes,
       createdAt: new Date().toISOString(),

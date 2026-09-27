@@ -106,3 +106,9 @@ También podés exportar un backup manual desde el Dashboard en cualquier moment
 - Los cambios se muestran inmediatamente en pantalla y se guardan al servidor en segundo plano (optimistic updates)
 - El servidor ya no lee los archivos del disco en cada consulta: carga los datos en memoria al iniciar y los mantiene ahí
 - Si algo falla al guardar, la pantalla revierte automáticamente al valor anterior
+
+### v1.8 — Borradores automáticos, menú mobile y carga por caja en Recepción
+- Al crear un pedido o liquidación, el listado de productos agregados ahora se ve arriba de los datos del cliente
+- Menú lateral colapsable en la computadora (franja de íconos); en el celular se convierte en un menú hamburguesa que se despliega por encima del contenido
+- Recepción de mercadería ahora acepta cargar por botella o por caja entera (antes solo por Pedidos/Liquidaciones)
+- Los pedidos y liquidaciones en carga se guardan solos como borrador a medida que se cargan — si se corta la conexión o se cierra el navegador a mitad de carga, al volver aparece la opción de continuar donde quedó. El borrador ya queda visible en la lista con el filtro "Borrador" antes de guardarlo manualmente

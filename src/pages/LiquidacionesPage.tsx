@@ -3,19 +3,30 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Receipt, Trash2, FileText, Pencil } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useLiquidacionStore } from '../store/liquidacionStore';
+import { LiquidacionStatus } from '../types';
 import { formatCurrency, formatDate } from '../utils/format';
 import { generateLiquidacionPDF } from '../utils/pdf';
 import { SearchBar } from '../components/ui/SearchBar';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
+type StatusFilter = LiquidacionStatus | 'all';
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: 'Todas' },
+  { value: 'draft', label: 'Borrador' },
+  { value: 'confirmed', label: 'Confirmada' },
+];
+
 export function LiquidacionesPage() {
   const navigate = useNavigate();
   const { liquidaciones, deleteLiquidacion } = useLiquidacionStore();
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const filtered = liquidaciones.filter((l) => {
+    if (statusFilter !== 'all' && (l.status ?? 'confirmed') !== statusFilter) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -53,14 +64,32 @@ export function LiquidacionesPage() {
         </div>
       )}
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Buscar por número, cliente o negocio..." />
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por número, cliente o negocio..." />
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setStatusFilter(f.value)}
+              className={clsx(
+                'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                statusFilter === f.value
+                  ? 'bg-burgundy text-white border-burgundy'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="card overflow-hidden">
         {filtered.length === 0 ? (
           <EmptyState
             icon={Receipt}
             title="Sin liquidaciones"
-            description={search ? 'No hay resultados para esa búsqueda.' : 'Creá tu primera liquidación con el botón de arriba.'}
+            description={search || statusFilter !== 'all' ? 'No hay liquidaciones con los filtros aplicados.' : 'Creá tu primera liquidación con el botón de arriba.'}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -79,7 +108,14 @@ export function LiquidacionesPage() {
                 {filtered.map((liq) => (
                   <tr key={liq.id} className="hover:bg-gray-50 transition-colors">
                     <td className="table-cell">
-                      <span className="font-mono text-sm font-semibold text-burgundy">{liq.liquidacionNumber}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-burgundy">{liq.liquidacionNumber}</span>
+                        {(liq.status ?? 'confirmed') === 'draft' && (
+                          <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                            Borrador
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="table-cell">
                       <div className="font-medium text-gray-900">{liq.client.company || liq.client.name}</div>

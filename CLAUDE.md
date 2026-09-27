@@ -184,3 +184,16 @@ Stock ≤ 6 botellas → fila roja en StockPage, badge rojo en Dashboard, tabla 
 - Múltiples usuarios / autenticación
 - Notificaciones de stock crítico
 - Estadísticas de ventas por período
+
+---
+
+## Memoria del proyecto
+
+Cada cambio grande de este proyecto (una feature, un fix no trivial, una decisión de arquitectura) se registra en **dos lugares en paralelo**:
+
+1. **El vault de Obsidian del usuario** (`Proyectos/bda/` — vía `create_note` del MCP `obsidian-vault`), que es su fuente de verdad persistente y editable fuera de Claude Code.
+2. **La carpeta [`memory/`](memory/) de este mismo repo** — un archivo por nota, mismo contenido, mismo formato que usa la memoria nativa de Claude Code (frontmatter `name`/`description`/`metadata.type`, notas enlazadas con `[[nombre]]`), indexado en [`memory/MEMORY.md`](memory/MEMORY.md).
+
+La carpeta `memory/` existe para que esta información quede escrita en el propio código — cualquier sesión futura (de cualquier agente, o cualquier persona leyendo el repo) la tiene disponible sin depender del vault externo. No reemplaza al vault, lo espeja.
+
+**Al terminar un cambio grande:** escribir la nota en el vault (regla ya vigente, ver `~/.claude/CLAUDE.md`) y agregar/actualizar el archivo correspondiente en `memory/` + su línea en `memory/MEMORY.md`.
